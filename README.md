@@ -1,3 +1,7 @@
+Test build on project Tsukuba 
+download the zip here https://drive.google.com/file/d/1bIAkbTV1dmsOd0usp33YQU_1pbDaJm-_/view 
+works with keyboard and controller. gui coming soon
+
 # KylesTrackDayController
 A physically accurate car simulation that takes the unity wheel collider and actively manages it to create a very stable, and accurate vehicle simulation. With minimal tweaking you will be hitting the Apex or clutching up a sweet drift. 
 
