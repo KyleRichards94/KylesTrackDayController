@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEditor;
 
 public class CarBehavior : MonoBehaviour
 {   
@@ -78,9 +79,11 @@ public class CarBehavior : MonoBehaviour
     public bool tractionControl = true;
     public float turningRadius = 1.5f;
 
+    public float frontARB = 50000f;
+    public float rearARB = 45000f;
 
-    public float frontARB = 5000f;
-    public float rearARB = 4500f;
+    public float brakeForce = 2000f;
+    public float brakeBalance = 0.6f;
 
     private float FantiRollForceA;
     private float FantiRollForceB;  
@@ -115,16 +118,18 @@ public class CarBehavior : MonoBehaviour
     public float Stability = 500f;
 
     [Header ("audio")]
-    public AudioSource engineAudioSource;
-    public AudioSource engineAudioSource2;
+    public AudioSource[] engineAudioSource = null;
 
     [Header("Camera Positions")]
-    public Transform[] CameraPositions = new Transform[3];
+    public Transform[] CameraPositions = null;
+
 
     [Header ("Down Force Zones")]
-    public Transform FrontSplitter;
-    public Transform hood; 
-    public Transform rearWing;
+
+    //
+    [SerializeField]
+    public Transform[] downForceLocations;
+    public float downForceMult = 20f;
 
     [Header ("Controller Settings")]
     public bool ControllerInput = true;
@@ -186,8 +191,12 @@ public class CarBehavior : MonoBehaviour
         instanciateEmitters();
         DriveTranCheck();
         SuspensionProperties();
-        engineAudioSource.Play();
-        engineAudioSource2.Play();
+
+        if(engineAudioSource != null){
+            foreach(AudioSource engine in engineAudioSource){
+                engine.Play();
+            }
+        }
 
         wheelbase = (Vector3.Distance(frontLeft.transform.position, rearLeft.transform.position) + Vector3.Distance(frontRight.transform.position, rearRight.transform.position)) / 2f;
         rearTrack = Vector3.Distance(rearLeft.transform.position, rearRight.transform.position);
@@ -195,10 +204,10 @@ public class CarBehavior : MonoBehaviour
 
     void instanciateEmitters(){
         if(tireTrail){
-            frontRightTrail =  Instantiate(tireTrail, frontRight.transform.position - Vector3.up * (frontRight.radius*2) , Quaternion.identity, frontRight.transform).GetComponent<TrailRenderer>();
-            frontLeftTrail =   Instantiate(tireTrail, frontLeft.transform.position - Vector3.up *(frontLeft.radius*2), Quaternion.identity,frontLeft.transform).GetComponent<TrailRenderer>();
-            rearRightTrail =   Instantiate(tireTrail, rearRight.transform.position - Vector3.up *(rearRight.radius*2), Quaternion.identity, rearRight.transform).GetComponent<TrailRenderer>();
-            rearLeftTrail =    Instantiate(tireTrail, rearLeft.transform.position - Vector3.up * (rearLeft.radius*2), Quaternion.identity, rearLeft.transform).GetComponent<TrailRenderer>();
+            frontRightTrail =  Instantiate(tireTrail, frontRight.transform.position - Vector3.up * (frontRight.radius/2 + _frontSuspensionHeight*2) , Quaternion.identity, frontRight.transform).GetComponent<TrailRenderer>();
+            frontLeftTrail =   Instantiate(tireTrail, frontLeft.transform.position - Vector3.up *(frontLeft.radius/2 + _frontSuspensionHeight*2), Quaternion.identity,frontLeft.transform).GetComponent<TrailRenderer>();
+            rearRightTrail =   Instantiate(tireTrail, rearRight.transform.position - Vector3.up *(rearRight.radius/2 + _rearSuspensionHeight*2), Quaternion.identity, rearRight.transform).GetComponent<TrailRenderer>();
+            rearLeftTrail =    Instantiate(tireTrail, rearLeft.transform.position - Vector3.up * (rearLeft.radius/2  + _rearSuspensionHeight*2), Quaternion.identity, rearLeft.transform).GetComponent<TrailRenderer>();
         }
         if(tireSmoke){
             frontRightPart =  Instantiate(tireSmoke, frontRight.transform.position - Vector3.up * _frontWheelRadius, Quaternion.identity, frontRight.transform).GetComponent<ParticleSystem>();
@@ -226,15 +235,13 @@ public class CarBehavior : MonoBehaviour
         CalculateAxleForces();
         CalculateWheelPose(); 
         ApplyBreakForce();
-        ApplyDownforce(FrontSplitter, 10f);
-        ApplyDownforce(rearWing, 110f);
-        ApplyDownforce(hood, 40f);
+        ApplyDownforce();
         ApplyfrontARB();
         ApplyrearARB();
         ApplyStabilization();
 
 
-        clutch = 1- clutchInputValue;
+        
     }
 
     private void calculateWheelExtremes(WheelCollider Wheel){
@@ -295,25 +302,28 @@ public class CarBehavior : MonoBehaviour
     }
 
     private void TireSkidEmission(){
-        if(Mathf.Abs(wheelHits[0].sidewaysSlip)  > 0.25f || Mathf.Abs(wheelHits[0].forwardSlip) > 0.3f){
+        float skidlimit= 0.1f;
+        float slipLimit = 0.2f;
+        //i really should array the wheels up. but...
+        if(Mathf.Abs(wheelHits[0].sidewaysSlip)  > skidlimit || Mathf.Abs(wheelHits[0].forwardSlip) >slipLimit){
             frontRightTrail.emitting = true;
-            frontRightTrail.GetComponent<Renderer>().material.SetColor("_Color",new Color(0f, 0f, 0f, 2f *Mathf.Abs( wheelHits[0].sidewaysSlip + wheelHits[0].forwardSlip)));
+            frontRightTrail.GetComponent<Renderer>().material.SetColor("_Color",new Color(0f, 0f, 0f, 1f *Mathf.Abs( wheelHits[0].sidewaysSlip + wheelHits[0].forwardSlip)));
         } else {
              frontRightTrail.emitting = false;
         }
-        if(Mathf.Abs(wheelHits[1].sidewaysSlip)  > 0.25f || Mathf.Abs(wheelHits[1].forwardSlip) > 0.3f){
+        if(Mathf.Abs(wheelHits[1].sidewaysSlip)  > skidlimit || Mathf.Abs(wheelHits[1].forwardSlip) > slipLimit){
             frontLeftTrail.emitting = true;
-            frontLeftTrail.GetComponent<Renderer>().material.SetColor("_Color",new Color(0f, 0f, 0f,2f *Mathf.Abs( wheelHits[1].sidewaysSlip + wheelHits[1].forwardSlip)));
+            frontLeftTrail.GetComponent<Renderer>().material.SetColor("_Color",new Color(0f, 0f, 0f,1f *Mathf.Abs( wheelHits[1].sidewaysSlip + wheelHits[1].forwardSlip)));
         } else {
             frontLeftTrail.emitting = false;
         }
-        if(Mathf.Abs(wheelHits[2].sidewaysSlip)  > 0.25f || Mathf.Abs(wheelHits[2].forwardSlip) > 0.2f){
+        if(Mathf.Abs(wheelHits[2].sidewaysSlip)  > skidlimit || Mathf.Abs(wheelHits[2].forwardSlip) > slipLimit){
             rearRightTrail.emitting = true;
             rearRightTrail.GetComponent<Renderer>().material.SetColor("_Color",new Color(0f, 0f, 0f, 2f *Mathf.Abs( wheelHits[2].sidewaysSlip + wheelHits[2].forwardSlip)));
         } else {
             rearRightTrail.emitting = false;
         }
-        if(Mathf.Abs(wheelHits[3].sidewaysSlip)  > 0.25f || Mathf.Abs(wheelHits[3].forwardSlip) > 0.2f){
+        if(Mathf.Abs(wheelHits[3].sidewaysSlip)  > skidlimit|| Mathf.Abs(wheelHits[3].forwardSlip) > slipLimit){
             rearLeftTrail.emitting = true;
             rearLeftTrail.GetComponent<Renderer>().material.SetColor("_Color",new Color(0f, 0f, 0f, 2f *Mathf.Abs( wheelHits[3].sidewaysSlip + wheelHits[3].forwardSlip)));
         } else {
@@ -405,25 +415,30 @@ private void ApplyrearARB()
 
 
 
-    private void ApplyDownforce(Transform downforceLocation, float value){
-        RaycastHit hit;
-        if(Physics.Raycast(downforceLocation.position, transform.TransformDirection(Vector3.down), out hit, Mathf.Infinity)){
-             Debug.DrawRay(downforceLocation.position, (-transform.up* value*  Mathf.Abs(carRigidBody.velocity.z))/1000f, Color.yellow);
-                carRigidBody.AddForceAtPosition(-transform.up * value*  Mathf.Abs(carRigidBody.velocity.z), downforceLocation.position);
-                //Debug.Log(-transform.up * 110f* carRigidBody.velocity.magnitude);
+    private void ApplyDownforce(){
+        if(downForceLocations != null){
+            foreach(Transform dfLocation in downForceLocations){
+                RaycastHit hit;
+                if(Physics.Raycast(dfLocation.position, transform.TransformDirection(Vector3.down), out hit, Mathf.Infinity)){
+                    Debug.DrawRay(dfLocation.position, (-transform.up* (hit.distance*downForceMult) * Mathf.Abs(carRigidBody.velocity.z))/1000f, Color.yellow);
+                        carRigidBody.AddForceAtPosition(-transform.up * (hit.distance*downForceMult)*  Mathf.Abs(carRigidBody.velocity.z), dfLocation.position);
+                        //Debug.Log(-transform.up * 110f* carRigidBody.velocity.magnitude);
+                        //Handles.Label(dfLocation.position, (hit.distance * 10f * Mathf.Abs(carRigidBody.velocity.z)).ToString());
+                }
+            }
         }
     }
 
     private void CalculateMotorTorque(){
         float AccelInput = Mathf.Clamp(accellerationInputValue + Input.GetAxis("Vertical"), 0, 1);
+        clutch = 1- clutchInputValue;
 
         if(engineRPM > redLineRPM-50f){
             engineRPM -= Random.Range(600,500);
         }
-        if(accellerationInputValue == 0){
-            engineRPM -= 20f; //engine braking
+        if(AccelInput == 0){
+            engineRPM -= 10f; //engine braking
         }
-
         if(rearWheelDrive){
 
                     if(clutch < 0.2f){
@@ -475,15 +490,15 @@ private void ApplyrearARB()
     }
     private void ApplyBreakForce(){
             if(Input.GetAxis("Vertical") < 0){
-            frontLeft.brakeTorque = Mathf.Abs(Input.GetAxis("Vertical")) * 1600f;   // Axis Vertical is set to Posbutton = down Alt pos button = s; No negative buttons
-            frontRight.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical")) * 1600f; //
-            rearRight.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical"))* 1000f;
-            rearLeft.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical")) * 1000f;
+            frontLeft.brakeTorque = Mathf.Abs(Input.GetAxis("Vertical")) * brakeForce * (1-brakeBalance);   // Axis Vertical is set to Posbutton = down Alt pos button = s; No negative buttons
+            frontRight.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical")) * brakeForce * (1-brakeBalance); //
+            rearRight.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical"))* brakeForce * (brakeBalance);
+            rearLeft.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical")) * brakeForce * (brakeBalance);
             } else { // Gamepad input 
-                frontLeft.brakeTorque = brakeInputValue * 1600f;
-                frontRight.brakeTorque  = brakeInputValue * 1600f;
-                rearRight.brakeTorque  = brakeInputValue * 1000f;
-                rearLeft.brakeTorque  = brakeInputValue * 1000f;
+                frontLeft.brakeTorque = brakeInputValue * brakeForce * (1-brakeBalance);
+                frontRight.brakeTorque  = brakeInputValue * brakeForce * (1-brakeBalance);
+                rearRight.brakeTorque  = brakeInputValue * brakeForce * (brakeBalance);
+                rearLeft.brakeTorque  = brakeInputValue * brakeForce * (brakeBalance);
             }
         
     }
@@ -500,10 +515,12 @@ private void ApplyrearARB()
         }
     }
     private void AudioController(){
-        float pitch = Mathf.Lerp(-0.1f, 1.2f, engineRPM / redLineRPM); 
-        float pitch2 = Mathf.Lerp(0.3f,1.4f, engineRPM / redLineRPM); 
-        engineAudioSource.pitch = pitch;
-        engineAudioSource2.pitch = pitch2;
+       if(engineAudioSource != null){
+            foreach(AudioSource engine in engineAudioSource){
+                float pitch = Mathf.Lerp(-0.1f, 1.2f, engineRPM / redLineRPM); 
+                engine.pitch = pitch;
+            }
+        }
     }
 
 private void CalculateWheelPose()
@@ -524,15 +541,11 @@ private void SetPose(WheelCollider WC, Transform WT, float camberAngle = 0f, flo
     // Create a new quaternion with X and Y from q and Z from camberAngle
     Quaternion Toe = Quaternion.Euler(0, toeAngle , 0);
     Quaternion Camber = Quaternion.Euler(1,1,camberAngle);
-
-
-
     WT.transform.position = pos;
     WT.transform.rotation = q;
     //WT.transform.rotation = Quaternion.Euler(q.eulerAngles.x * Axle.eulerAngles.x,  q.eulerAngles.y* Axle.eulerAngles.y, q.eulerAngles.z* Axle.eulerAngles.z);
     WT.transform.rotation = q;
     //WT.transform.localRotation *= Camber;
-
 }
 
 private void CalculateAxleForces(){
@@ -642,9 +655,11 @@ private void SuspensionProperties(){
             Gizmos.DrawRay(rearRight.transform.position, - RantiRollVector);
 
             Gizmos.color = Color.magenta;
-            Gizmos.DrawRay(rearWing.position, -transform.up);
-            Gizmos.DrawRay(hood.position, -transform.up);
-            Gizmos.DrawRay(FrontSplitter.position, -transform.up);
+            if(downForceLocations != null){
+                foreach(Transform dfLoc in downForceLocations){
+                    Gizmos.DrawRay(dfLoc.position, -transform.up);
+                }
+            }
     }
 
     private void OnGUI()
