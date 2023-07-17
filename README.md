@@ -16,8 +16,8 @@ Your torque curve should physically mimic the torque curve produced by the car o
 **![image](https://github.com/KyleRichards94/KylesTrackDayController/assets/122703065/c88d2aa7-40e6-4ad1-8b1e-fa9ce7245b17)
 **
 
-Downforce zones are not optional. 
-Apply three empties to the car in the hirearchy and position them along the cars center line. After supplying the script with the transforms a gizmo will show their position and force application 
+Downforce zones are now optional. 
+Apply as many emtpies as you want above the car and add them to the dowforcezones array. their value is calculate by their height above the car as speeds increase. Reccomended you apply 2x the downforce to the rear as you do to the front for highspeed stability and corner exit stability.
 ![image](https://github.com/KyleRichards94/KylesTrackDayController/assets/122703065/4bd2aee6-9d7d-4e36-98ca-fb7761f7ef9f)
 
 
