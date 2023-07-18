@@ -142,18 +142,48 @@ public class CarBehavior : MonoBehaviour
     
 
     private void OnAccelerate(InputValue value){
-        accellerationInputValue = value.Get<float>();
+        if(Gamepad.all.Count > 0){
+            accellerationInputValue = value.Get<float>();
+        } else {
+            accellerationInputValue =0;
+        }
     }
 
     private void OnBrake(InputValue value){
-        brakeInputValue = value.Get<float>();    
+         if(Gamepad.all.Count > 0){
+            brakeInputValue = value.Get<float>();
+         }  else {
+            accellerationInputValue = 0;
+         }  
     }
     private void OnClutch(InputValue value){
-        clutchInputValue = value.Get<float>(); 
+        if(Gamepad.all.Count > 0){
+            clutchInputValue = value.Get<float>(); 
+        } else {
+            clutchInputValue = 0;
+        }
     }
 
     private void OnSteer(InputValue value){
-        steerInputValue = value.Get<float>();
+        if(Gamepad.all.Count > 0){
+            steerInputValue = value.Get<float>();
+        } else {
+            steerInputValue =0;
+        }
+    }
+    private bool OnGearUp(){
+        if(Gamepad.all.Count > 0){
+            return Gamepad.current.buttonNorth.wasPressedThisFrame;
+        } else { 
+            return false; 
+        }
+    }
+    private bool OnGearDown(){
+         if(Gamepad.all.Count > 0){
+        return Gamepad.current.buttonSouth.wasPressedThisFrame;
+         } else {
+            return false;
+         }
     }
     //private void OnGearup(InputValue value){   methods noto currently used
     //    gearUpInputValue = value.Get<float>();
@@ -186,20 +216,12 @@ public class CarBehavior : MonoBehaviour
     // 
     
     // Start is called before the first frame update
-    void Start()
-    {   
+    void Start(){   
         instanciateEmitters();
         DriveTranCheck();
         SuspensionProperties();
-
-        if(engineAudioSource != null){
-            foreach(AudioSource engine in engineAudioSource){
-                engine.Play();
-            }
-        }
-
-        wheelbase = (Vector3.Distance(frontLeft.transform.position, rearLeft.transform.position) + Vector3.Distance(frontRight.transform.position, rearRight.transform.position)) / 2f;
-        rearTrack = Vector3.Distance(rearLeft.transform.position, rearRight.transform.position);
+        audioCheck();
+        calculateVehicleWheelBase();  
     }
 
     void instanciateEmitters(){
@@ -216,92 +238,102 @@ public class CarBehavior : MonoBehaviour
             rearLeftPart =    Instantiate(tireSmoke, rearLeft.transform.position - Vector3.up * _rearWheelRadius, Quaternion.identity, rearLeft.transform).GetComponent<ParticleSystem>();
         }  
     }
+    private void DriveTranCheck(){
+        int countTrue = 0; 
+        if(frontWheelDrive){ countTrue ++;}
+        if(rearWheelDrive){ countTrue ++;}
+        if(allWheelDrive){ countTrue ++; }
+        if(countTrue > 1 || countTrue < 1){
+            Debug.Log("Ensure only 1 powetran type is selected: setting default");
+            rearWheelDrive = true;
+            frontWheelDrive = false;
+            allWheelDrive = false;
+        }
+    }
+    private void SuspensionProperties(){
+        _frontWheelRadius = (frontRight.radius + frontLeft.radius)/2f;
+        _frontSuspensionHeight = (frontRight.suspensionDistance + frontLeft.suspensionDistance)/2f;
+        _frontDamper = (frontRight.wheelDampingRate + frontLeft.wheelDampingRate)/2f;
+        //frontSuspensionTravel = center - suspension height. 
+        _rearWheelRadius = (rearRight.radius + rearLeft.radius)/2f;
+        _rearSuspensionHeight = (rearRight.suspensionDistance + rearLeft.suspensionDistance)/2f;
+        _rearDamper= (rearRight.wheelDampingRate + rearLeft.wheelDampingRate)/2f;
+        ApplicationPointDist = (frontLeft.forceAppPointDistance+frontRight.forceAppPointDistance+rearLeft.forceAppPointDistance+rearRight.forceAppPointDistance)/4f;
+    }
+    private void audioCheck(){
+        if(engineAudioSource != null){
+            foreach(AudioSource engine in engineAudioSource){
+                engine.Play();
+            }
+        }
+
+    }
+    private void calculateVehicleWheelBase(){
+        wheelbase = (Vector3.Distance(frontLeft.transform.position, rearLeft.transform.position) + Vector3.Distance(frontRight.transform.position, rearRight.transform.position)) / 2f;
+        rearTrack = Vector3.Distance(rearLeft.transform.position, rearRight.transform.position);
+    }
 
     // Update is called once per frame
-    void Update()
-    {   
+    void Update(){   
         AudioController();
         Transmition();
         CalculateSteerAngle();
         TireSkidEmission();
-        frontRight.GetGroundHit(out wheelHits[0]);
-        frontLeft.GetGroundHit(out wheelHits[1]);
-        rearRight.GetGroundHit(out wheelHits[2]);
-        rearLeft.GetGroundHit(out wheelHits[3]);
+        getGroundHits();
     }
 
-    void FixedUpdate() {
-        CalculateMotorTorque();
-        CalculateAxleForces();
-        CalculateWheelPose(); 
-        ApplyBreakForce();
-        ApplyDownforce();
-        ApplyfrontARB();
-        ApplyrearARB();
-        ApplyStabilization();
-
-
+    private void AudioController(){
+       if(engineAudioSource != null){
+            foreach(AudioSource engine in engineAudioSource){
+                float pitch = Mathf.Lerp(-0.1f, 1.2f, engineRPM / redLineRPM); 
+                engine.pitch = pitch;
+            }
+        }
+    }
+    private void Transmition(){
+        if(OnGearUp()  && CurrentGear < gearRatios.Length-1){
+            CurrentGear += 1;
+        } else if(Input.GetKeyDown(KeyCode.X)  && CurrentGear < gearRatios.Length-1){
+            CurrentGear += 1;
+        }
+        if(OnGearDown()   && CurrentGear >= 0){
+            CurrentGear -= 1;
+        } else if(Input.GetKeyDown(KeyCode.Z)  && CurrentGear >= 0){
+            CurrentGear -= 1;
+        }
+    }
+     private void CalculateSteerAngle(){
         
-    }
-
-    private void calculateWheelExtremes(WheelCollider Wheel){
-    WheelFrictionCurve frictionCurveR = Wheel.sidewaysFriction;
-    float angularVelocity = 0f;
-    float stiffnessIncrease = 0f;
-
-    if(Wheel == frontLeft || Wheel == frontRight){
-
-        if(steerInputValue > 0 && Wheel == frontLeft){ //Youre turning right and the outside wheels have their contact patch increased by the camber value. 
-            angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _frontCamber;
-            stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
-        } else if(steerInputValue < 0 && Wheel == frontRight){
-            angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _frontCamber;
-            stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
+        if(steerInputValue > 0 || Input.GetAxis("Horizontal") > 0 ){
+            desiredLeftWAngle = Mathf.Rad2Deg *  Mathf.Atan(wheelbase / (turningRadius ) + rearTrack / 2) * (steerInputValue + Input.GetAxis("Horizontal")) ;
+            desiredRightWAngle = Mathf.Rad2Deg * Mathf.Atan(wheelbase / (turningRadius ) - rearTrack / 2) * (steerInputValue + Input.GetAxis("Horizontal")) ;
         }
-    } else if (Wheel == rearRight ||Wheel == rearLeft){
-        if(steerInputValue > 0 && Wheel == rearLeft){
-            angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _rearCamber;
-            stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
-        }else if(steerInputValue < 0 && Wheel == rearRight){
-            
-            angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _rearCamber;
-            stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
+        else if(steerInputValue < 0 || Input.GetAxis("Horizontal") < 0 ){
+            desiredLeftWAngle = Mathf.Rad2Deg *  Mathf.Atan(wheelbase / (turningRadius ) - rearTrack / 2) * (steerInputValue + Input.GetAxis("Horizontal")) ;
+            desiredRightWAngle = Mathf.Rad2Deg * Mathf.Atan(wheelbase / (turningRadius ) + rearTrack / 2) * (steerInputValue + Input.GetAxis("Horizontal")) ;
+        } else {
+            desiredLeftWAngle = 0;
+            desiredRightWAngle = 0;
+        }
+
+        // Apply lerp to smoothly transition between the current and desired values
+        if(wheelHits[0].sidewaysSlip > 0.2f && wheelHits[1].sidewaysSlip > 0.2f){
+            steeringSmoothness = 20f * Mathf.Abs(wheelHits[0].sidewaysSlip + wheelHits[1].sidewaysSlip)/2;
+        } else {
+            steeringSmoothness = 20f;
+        }
+        
+        targetLeftWAngle = Mathf.Lerp(targetLeftWAngle, desiredLeftWAngle, steeringSmoothness * Time.deltaTime);
+        targetRightWAngle = Mathf.Lerp(targetRightWAngle, desiredRightWAngle, steeringSmoothness * Time.deltaTime);
+
+        frontRight.steerAngle = targetRightWAngle / (1+(carRigidBody.velocity.magnitude/10f));
+        frontLeft.steerAngle = targetLeftWAngle / (1+(carRigidBody.velocity.magnitude/10f));
+
+        if(SteeringWheel != null){
+            SteeringWheel.localRotation = Quaternion.Euler(23f, 0f ,-(targetLeftWAngle+targetRightWAngle) );
         }
     }
-
-    if(accellerationInputValue > 0){
-        frictionCurveR.stiffness = Mathf.Clamp(2f - WheelSpinRatio(Wheel), 0.3f, 2f ) + stiffnessIncrease;
-    } else {
-        frictionCurveR.stiffness = 1 + stiffnessIncrease;
-    }
-
-    Wheel.sidewaysFriction = frictionCurveR ;
-    Debug.DrawLine(Wheel.transform.position + (-transform.up * _rearWheelRadius), Wheel.transform.position + (transform.up * stiffnessIncrease), Color.red);
-    }
-
-    private void calculateWheelSpinSlip()
-    {
-        WheelFrictionCurve frictionCurveR = rearRight.sidewaysFriction;
-        WheelFrictionCurve frictionCurveL = rearLeft.sidewaysFriction;
-        frictionCurveR.stiffness = Mathf.Clamp(2f - WheelSpinRatio(rearRight), 0.6f, 1.5f );
-        frictionCurveL.stiffness = Mathf.Clamp(2f - WheelSpinRatio(rearLeft), 0.6f, 1.5f );
-        rearRight.sidewaysFriction = frictionCurveR;
-        rearLeft.sidewaysFriction = frictionCurveL;
-    }
-    private float WheelSpinRatio(WheelCollider wheelCollider)
-    {
-        return  Mathf.Abs(wheelCollider.rpm+1f) / (Mathf.Abs(frontRight.rpm + frontLeft.rpm)+0.0000001f/2);
-    }
-
-    private void ApplyStabilization(){
-        float rbVel = carRigidBody.velocity.magnitude;
-        frontRight.forceAppPointDistance = ApplicationPointDist + (rbVel /Stability);
-        frontLeft.forceAppPointDistance =  ApplicationPointDist + (rbVel /Stability);
-        rearRight.forceAppPointDistance =  ApplicationPointDist + (rbVel /Stability);
-        rearLeft.forceAppPointDistance =   ApplicationPointDist + (rbVel /Stability);
-    }
-
-    private void TireSkidEmission(){
+     private void TireSkidEmission(){
         float skidlimit= 0.1f;
         float slipLimit = 0.2f;
         //i really should array the wheels up. but...
@@ -330,91 +362,201 @@ public class CarBehavior : MonoBehaviour
             rearLeftTrail.emitting = false;
         }
     }
-    
+    private void getGroundHits(){
+        frontRight.GetGroundHit(out wheelHits[0]);
+        frontLeft.GetGroundHit(out wheelHits[1]);
+        rearRight.GetGroundHit(out wheelHits[2]);
+        rearLeft.GetGroundHit(out wheelHits[3]);
 
-    private void CalculateSteerAngle(){
-        
-        if(steerInputValue > 0 || Input.GetAxis("Horizontal") >0 ){
-            desiredLeftWAngle = Mathf.Rad2Deg *  Mathf.Atan(wheelbase / (turningRadius ) + rearTrack / 2) * (steerInputValue + Input.GetAxis("Horizontal")) ;
-            desiredRightWAngle = Mathf.Rad2Deg * Mathf.Atan(wheelbase / (turningRadius ) - rearTrack / 2) * (steerInputValue + Input.GetAxis("Horizontal")) ;
-        }
-        else if(steerInputValue < 0 || Input.GetAxis("Horizontal") < 0 ){
-            desiredLeftWAngle = Mathf.Rad2Deg *  Mathf.Atan(wheelbase / (turningRadius ) - rearTrack / 2) * (steerInputValue + Input.GetAxis("Horizontal")) ;
-            desiredRightWAngle = Mathf.Rad2Deg * Mathf.Atan(wheelbase / (turningRadius ) + rearTrack / 2) * (steerInputValue + Input.GetAxis("Horizontal")) ;
-        } else {
-            desiredLeftWAngle = 0;
-            desiredRightWAngle = 0;
-        }
-
-        // Apply lerp to smoothly transition between the current and desired values
-        if(wheelHits[0].sidewaysSlip > 0.2f && wheelHits[1].sidewaysSlip > 0.2f){
-            steeringSmoothness = 20f * Mathf.Abs(wheelHits[0].sidewaysSlip + wheelHits[1].sidewaysSlip)/2;
-        } else {
-            steeringSmoothness = 20f;
-        }
-        
-        targetLeftWAngle = Mathf.Lerp(targetLeftWAngle, desiredLeftWAngle, steeringSmoothness * Time.deltaTime);
-        targetRightWAngle = Mathf.Lerp(targetRightWAngle, desiredRightWAngle, steeringSmoothness * Time.deltaTime);
-
-        frontRight.steerAngle = targetRightWAngle/(1+(carRigidBody.velocity.magnitude/10f));
-        frontLeft.steerAngle = targetLeftWAngle/(1+(carRigidBody.velocity.magnitude/10f));
-
-        if(SteeringWheel != null){
-            SteeringWheel.localRotation = Quaternion.Euler(23f, 0f ,-(targetLeftWAngle+targetRightWAngle) );
-        }
     }
     
-    //BROKEN
-private void ApplyfrontARB()
-{
-    WheelHit hitA, hitB;
 
-    bool groundedA = frontLeft.GetGroundHit(out hitA);
-    bool groundedB = frontRight.GetGroundHit(out hitB);
 
-    if (groundedA && groundedB)
-    {
-        float travelA = (-frontLeft.transform.InverseTransformPoint(hitA.point).z - frontLeft.radius) / frontLeft.suspensionDistance;
-        float travelB = (-frontRight.transform.InverseTransformPoint(hitB.point).z - frontRight.radius) / frontRight.suspensionDistance;
-
-        FantiRollForceA = travelA * frontARB;
-        FantiRollForceB = travelB * frontARB;
-
-        FrontantiRollVector.z = (FantiRollForceA - FantiRollForceB);
-
-        carRigidBody.AddForceAtPosition(frontLeft.transform.up * FrontantiRollVector.z, frontLeft.transform.position);
-        carRigidBody.AddForceAtPosition(frontRight.transform.up * -FrontantiRollVector.z, frontRight.transform.position);
-
-        // Draw Gizmos for the forces
+    void FixedUpdate() {
+        CalculateMotorTorque();
+        CalculateAxleForces();
+        CalculateWheelPose(); 
+        ApplyBreakForce();
+        ApplyDownforce();
+        ApplyfrontARB();
+        ApplyrearARB();
+        ApplyStabilization();
+        
     }
-}
+    
+    private void CalculateMotorTorque(){
+        float AccelInput = Mathf.Clamp(accellerationInputValue + Input.GetAxis("Vertical"), 0, 1);
+        clutch = 1- clutchInputValue;
 
-private void ApplyrearARB()
-{
-    WheelHit hitA, hitB;
+        if(engineRPM > redLineRPM-50f){
+            engineRPM -= Random.Range(600,500);
+        }
+        if(AccelInput == 0){
+            engineRPM -= 10f; //engine braking
+        }
+        if(rearWheelDrive){
 
-    bool groundedA = rearLeft.GetGroundHit(out hitA);
-    bool groundedB = rearRight.GetGroundHit(out hitB);
+            if(clutch < 0.2f){
+                engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(engineRPM, redLineRPM * AccelInput) + Random.Range(-50, 50), Time.deltaTime*4f);
+                torqueOutput = 0;
+            } else {
+                float targetRPM = Mathf.Max(engineRPM, engineRPM);
+                wheelRPM = averageWheelRPM(rearRight,rearLeft) * gearRatios[CurrentGear] * (differentialRatio);
+                engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(idleRpm, wheelRPM), Time.deltaTime*3f);
+                if(engineRPM < idleRpm){
+                    engineRPM = idleRpm + Random.Range(50,-50);
+                }
+                /// Locked DIFF
+                if(rearRight.rpm < rearLeft.rpm){
+                    torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] * 1.8f) + rearLeft.rpm*differentialLockRatio)/1.2f;
+                }
+                if(rearLeft.rpm < rearRight.rpm){
+                    torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] * 1.8f) + rearRight.rpm*differentialLockRatio)/1.2f;
+                }
+                //Active Traction Control. 
+                if(rearRight.rpm > engineRPM){
+                    rearRight.brakeTorque = 1600f;
+                }
 
-    if (groundedA && groundedB)
-    {
-        float travelA = (-rearLeft.transform.InverseTransformPoint(hitA.point).z - rearLeft.radius) / rearLeft.suspensionDistance;
-        float travelB = (-rearRight.transform.InverseTransformPoint(hitB.point).z - rearRight.radius) / rearRight.suspensionDistance;
+                if(rearLeft.rpm > engineRPM){
+                    rearLeft.brakeTorque = 1600f;
+                }
 
-        RantiRollForceA = travelA * rearARB;
-        RantiRollForceB = travelB * rearARB;
+                if(tractionControl){
+                    if(Mathf.Abs(wheelHits[2].sidewaysSlip) > 0.2f || Mathf.Abs(wheelHits[3].sidewaysSlip) > 0.2f){
+                        torqueOutput = 0;
+                        rearLeft.brakeTorque = 1600f;
+                        rearRight.brakeTorque = 1600f;
+                        engineRPM -= 50f;
+                    }
+                }
+            }
+        }
+        if(allWheelDrive){
+            engineRPM = averageWheelRPMAllwheelDrive(frontLeft, frontRight, rearLeft, rearRight);
+        }
+        if(frontWheelDrive){
+            wheelRPM = averageWheelRPM(frontRight,frontLeft) * gearRatios[CurrentGear] * (differentialRatio);
+        }
+        rearLeft.motorTorque = torqueOutput * AccelInput;
+        rearRight.motorTorque = torqueOutput  * AccelInput;
 
-        RantiRollVector.z = (RantiRollForceA - RantiRollForceB);
-
-        carRigidBody.AddForceAtPosition(rearLeft.transform.up * RantiRollVector.z, rearLeft.transform.position);
-        carRigidBody.AddForceAtPosition(rearRight.transform.up * -RantiRollVector.z, rearRight.transform.position);
-
-        // Draw Gizmos for the forces
     }
-}
+    private float averageWheelRPM(WheelCollider left, WheelCollider right){
+        return Mathf.Abs((left.rpm + right.rpm) / 2f);
+    }
+    private float averageWheelRPMAllwheelDrive(WheelCollider Fleft, WheelCollider Fright, WheelCollider Rleft, WheelCollider Rright){
+        return ((Fleft.rpm+ Fright.rpm + Rleft.rpm + Rright.rpm) / 4f);
+    }
+    private void CalculateAxleForces(){
 
+        calculateWheelExtremes(rearRight);
+        calculateWheelExtremes(rearLeft);
+        calculateWheelExtremes(frontRight);
+        calculateWheelExtremes(frontLeft);
 
+        calculateToe(rearRight);
+        calculateToe(rearLeft);
+        calculateToe(frontRight);
+        calculateToe(frontLeft);
+    }
+    private void calculateWheelExtremes(WheelCollider Wheel){
+        WheelFrictionCurve frictionCurveR = Wheel.sidewaysFriction;
+        float angularVelocity = 0f;
+        float stiffnessIncrease = 0f;
 
+        if(Wheel == frontLeft || Wheel == frontRight){
+
+            if((steerInputValue > 0 && Wheel == frontLeft) || (Input.GetAxis("Horizontal") > 0 && Wheel == frontLeft)){ //Youre turning right and the outside wheels have their contact patch increased by the camber value. 
+                angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _frontCamber;
+                stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
+            } else if((steerInputValue < 0 && Wheel == frontRight) || (Input.GetAxis("Horizontal") < 0 && Wheel == frontRight)){
+                angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _frontCamber;
+                stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
+            }
+        } else if (Wheel == rearRight ||Wheel == rearLeft){
+            if((steerInputValue > 0 && Wheel == rearLeft) || (Input.GetAxis("Horizontal") > 0 && Wheel == rearLeft)){
+                angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _rearCamber;
+                stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
+            }else if((steerInputValue < 0 && Wheel == rearRight) || (Input.GetAxis("Horizontal") < 0 && Wheel == rearRight)){
+                
+                angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _rearCamber;
+                stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
+            }
+        }
+
+        if(accellerationInputValue > 0){
+            frictionCurveR.stiffness = Mathf.Clamp(2f - WheelSpinRatio(Wheel), 0.3f, 2f ) + stiffnessIncrease;
+        } else {
+            frictionCurveR.stiffness = 1 + stiffnessIncrease;
+        }
+
+        Wheel.sidewaysFriction = frictionCurveR ;
+        Debug.DrawLine(Wheel.transform.position + (-transform.up * _rearWheelRadius), Wheel.transform.position + (transform.up * stiffnessIncrease), Color.red);
+    }
+    private float WheelSpinRatio(WheelCollider wheelCollider){
+        return  Mathf.Abs(wheelCollider.rpm+1f) / (Mathf.Abs(frontRight.rpm + frontLeft.rpm)+0.0000001f/2);
+    }
+    private void calculateToe(WheelCollider wheel){
+        Vector3 forceDirection = new Vector3();
+        float forceMagnitude = 0f;
+        if (wheel == rearRight){
+            forceDirection = -transform.right;
+            forceMagnitude = _rearToe * Mathf.Abs(wheelHits[2].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
+        }
+        else if (wheel == rearLeft){
+            forceDirection = transform.right;
+            forceMagnitude = _rearToe * Mathf.Abs(wheelHits[3].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
+        }
+        else if (wheel == frontRight){
+            forceDirection = -transform.right;
+            forceMagnitude = _frontToe * Mathf.Abs(wheelHits[0].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
+        }
+        else if (wheel == frontLeft){
+            forceDirection = transform.right;
+            forceMagnitude = _frontToe * Mathf.Abs(wheelHits[1].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
+        }
+        
+        Vector3 forceVector = forceDirection * forceMagnitude;
+        carRigidBody.AddForceAtPosition(forceVector, wheel.transform.position);
+        // Draw the force line
+        Debug.DrawLine(wheel.transform.position, wheel.transform.position + forceVector, Color.red);
+    }
+    private void CalculateWheelPose(){
+        SetPose(frontRight, frontRightWheel,  _frontCamber, _frontToe);
+        SetPose(frontLeft, frontLeftWheel, _frontCamber, _frontToe);
+        SetPose(rearRight, rearRightWheel, _rearCamber, _rearToe);
+        SetPose(rearLeft, rearLeftWheel, _rearCamber, _rearToe);
+    }
+    private void SetPose(WheelCollider WC, Transform WT, float camberAngle = 0f, float toeAngle = 0f){
+    //may need to transition to a mesh 
+        Quaternion q;
+        Vector3 pos;
+        WC.GetWorldPose(out pos, out q);
+
+        // Create a new quaternion with X and Y from q and Z from camberAngle
+        Quaternion Toe = Quaternion.Euler(0, toeAngle , 0);
+        Quaternion Camber = Quaternion.Euler(1,1,camberAngle);
+        WT.transform.position = pos;
+        WT.transform.rotation = q;
+        //WT.transform.rotation = Quaternion.Euler(q.eulerAngles.x * Axle.eulerAngles.x,  q.eulerAngles.y* Axle.eulerAngles.y, q.eulerAngles.z* Axle.eulerAngles.z);
+        WT.transform.rotation = q;
+        //WT.transform.localRotation *= Camber;
+    }
+    private void ApplyBreakForce(){
+        if(Input.GetAxis("Vertical") < 0){
+        frontLeft.brakeTorque = Mathf.Abs(Input.GetAxis("Vertical")) * brakeForce * (1-brakeBalance);   // Axis Vertical is set to Posbutton = down Alt pos button = s; No negative buttons
+        frontRight.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical")) * brakeForce * (1-brakeBalance); //
+        rearRight.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical"))* brakeForce * (brakeBalance);
+        rearLeft.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical")) * brakeForce * (brakeBalance);
+        } else { // Gamepad input 
+            frontLeft.brakeTorque = brakeInputValue * brakeForce * (1-brakeBalance);
+            frontRight.brakeTorque  = brakeInputValue * brakeForce * (1-brakeBalance);
+            rearRight.brakeTorque  = brakeInputValue * brakeForce * (brakeBalance);
+            rearLeft.brakeTorque  = brakeInputValue * brakeForce * (brakeBalance);
+        }
+        
+    }
     private void ApplyDownforce(){
         if(downForceLocations != null){
             foreach(Transform dfLocation in downForceLocations){
@@ -428,200 +570,80 @@ private void ApplyrearARB()
             }
         }
     }
+    private void ApplyfrontARB(){
+        WheelHit hitA, hitB;
 
-    private void CalculateMotorTorque(){
-        float AccelInput = Mathf.Clamp(accellerationInputValue + Input.GetAxis("Vertical"), 0, 1);
-        clutch = 1- clutchInputValue;
+        bool groundedA = frontLeft.GetGroundHit(out hitA);
+        bool groundedB = frontRight.GetGroundHit(out hitB);
 
-        if(engineRPM > redLineRPM-50f){
-            engineRPM -= Random.Range(600,500);
-        }
-        if(AccelInput == 0){
-            engineRPM -= 10f; //engine braking
-        }
-        if(rearWheelDrive){
+        if (groundedA && groundedB)
+        {
+            float travelA = (-frontLeft.transform.InverseTransformPoint(hitA.point).z - frontLeft.radius) / frontLeft.suspensionDistance;
+            float travelB = (-frontRight.transform.InverseTransformPoint(hitB.point).z - frontRight.radius) / frontRight.suspensionDistance;
 
-                    if(clutch < 0.2f){
-                        engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(engineRPM, redLineRPM * AccelInput) + Random.Range(-50, 50), Time.deltaTime*4f);
-                        torqueOutput = 0;
-                    } else {
-                        float targetRPM = Mathf.Max(engineRPM, engineRPM);
-                        wheelRPM = averageWheelRPM(rearRight,rearLeft) * gearRatios[CurrentGear] * (differentialRatio);
-                        engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(idleRpm, wheelRPM), Time.deltaTime*3f);
-                        if(engineRPM < idleRpm){
-                            engineRPM = idleRpm + Random.Range(50,-50);
-                        }
-                        /// Locked DIFF
-                        if(rearRight.rpm < rearLeft.rpm){
-                            torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] * 1.8f) + rearLeft.rpm*differentialLockRatio)/1.2f;
-                        }
-                        if(rearLeft.rpm < rearRight.rpm){
-                            torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] * 1.8f) + rearRight.rpm*differentialLockRatio)/1.2f;
-                        }
-                        //Active Traction Control. 
-                        if(rearRight.rpm > engineRPM){
-                            rearRight.brakeTorque = 1600f;
-                        }
+            FantiRollForceA = travelA * frontARB;
+            FantiRollForceB = travelB * frontARB;
 
-                        if(rearLeft.rpm > engineRPM){
-                            rearLeft.brakeTorque = 1600f;
-                        }
+            FrontantiRollVector.z = (FantiRollForceA - FantiRollForceB);
 
-                        if(tractionControl){
-                            if(Mathf.Abs(wheelHits[2].sidewaysSlip) > 0.2f || Mathf.Abs(wheelHits[3].sidewaysSlip) > 0.2f){
-                                torqueOutput = 0;
-                                rearLeft.brakeTorque = 1600f;
-                                rearRight.brakeTorque = 1600f;
-                                engineRPM -= 50f;
-                            }
-                        }
-                    }
-            }
-            if(allWheelDrive){
-                engineRPM = averageWheelRPMAllwheelDrive(frontLeft, frontRight, rearLeft, rearRight);
-            }
-            if(frontWheelDrive){
-                wheelRPM = averageWheelRPM(frontRight,frontLeft) * gearRatios[CurrentGear] * (differentialRatio);
-            }
+            carRigidBody.AddForceAtPosition(frontLeft.transform.up * FrontantiRollVector.z, frontLeft.transform.position);
+            carRigidBody.AddForceAtPosition(frontRight.transform.up * -FrontantiRollVector.z, frontRight.transform.position);
 
-            rearLeft.motorTorque = torqueOutput * AccelInput;
-            rearRight.motorTorque = torqueOutput  * AccelInput;
-
-    }
-    private void ApplyBreakForce(){
-            if(Input.GetAxis("Vertical") < 0){
-            frontLeft.brakeTorque = Mathf.Abs(Input.GetAxis("Vertical")) * brakeForce * (1-brakeBalance);   // Axis Vertical is set to Posbutton = down Alt pos button = s; No negative buttons
-            frontRight.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical")) * brakeForce * (1-brakeBalance); //
-            rearRight.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical"))* brakeForce * (brakeBalance);
-            rearLeft.brakeTorque  = Mathf.Abs(Input.GetAxis("Vertical")) * brakeForce * (brakeBalance);
-            } else { // Gamepad input 
-                frontLeft.brakeTorque = brakeInputValue * brakeForce * (1-brakeBalance);
-                frontRight.brakeTorque  = brakeInputValue * brakeForce * (1-brakeBalance);
-                rearRight.brakeTorque  = brakeInputValue * brakeForce * (brakeBalance);
-                rearLeft.brakeTorque  = brakeInputValue * brakeForce * (brakeBalance);
-            }
-        
-    }
-    private void Transmition(){
-        if(Gamepad.current.buttonNorth.wasPressedThisFrame  && CurrentGear < gearRatios.Length-1){
-            CurrentGear += 1;
-        } else if(Input.GetKeyDown(KeyCode.X)  && CurrentGear < gearRatios.Length-1){
-            CurrentGear += 1;
-        }
-        if((Gamepad.current.buttonSouth.wasPressedThisFrame || Input.GetKeyDown(KeyCode.Z))   && CurrentGear >= 0){
-            CurrentGear -= 1;
-        } else if(Input.GetKeyDown(KeyCode.Z)  && CurrentGear >= 0){
-            CurrentGear -= 1;
+            // Draw Gizmos for the forces
         }
     }
-    private void AudioController(){
-       if(engineAudioSource != null){
-            foreach(AudioSource engine in engineAudioSource){
-                float pitch = Mathf.Lerp(-0.1f, 1.2f, engineRPM / redLineRPM); 
-                engine.pitch = pitch;
-            }
+    private void ApplyrearARB(){
+        WheelHit hitA, hitB;
+
+        bool groundedA = rearLeft.GetGroundHit(out hitA);
+        bool groundedB = rearRight.GetGroundHit(out hitB);
+
+        if (groundedA && groundedB)
+        {
+            float travelA = (-rearLeft.transform.InverseTransformPoint(hitA.point).z - rearLeft.radius) / rearLeft.suspensionDistance;
+            float travelB = (-rearRight.transform.InverseTransformPoint(hitB.point).z - rearRight.radius) / rearRight.suspensionDistance;
+
+            RantiRollForceA = travelA * rearARB;
+            RantiRollForceB = travelB * rearARB;
+
+            RantiRollVector.z = (RantiRollForceA - RantiRollForceB);
+
+            carRigidBody.AddForceAtPosition(rearLeft.transform.up * RantiRollVector.z, rearLeft.transform.position);
+            carRigidBody.AddForceAtPosition(rearRight.transform.up * -RantiRollVector.z, rearRight.transform.position);
+
+            // Draw Gizmos for the forces
+        }
+    }   
+    private void ApplyStabilization(){
+        float rbVel = carRigidBody.velocity.magnitude;
+        frontRight.forceAppPointDistance = ApplicationPointDist + (rbVel /Stability);
+        frontLeft.forceAppPointDistance =  ApplicationPointDist + (rbVel /Stability);
+        rearRight.forceAppPointDistance =  ApplicationPointDist + (rbVel /Stability);
+        rearLeft.forceAppPointDistance =   ApplicationPointDist + (rbVel /Stability);
+
+        WheelFrictionCurve frictionCurve;
+        if(!rearLeft.isGrounded){
+            frictionCurve = rearRight.sidewaysFriction;
+            frictionCurve.stiffness = 0f;
+            rearRight.sidewaysFriction = frictionCurve;
+        }
+        if(!rearRight.isGrounded){
+            frictionCurve = rearLeft.sidewaysFriction;
+            frictionCurve.stiffness = 0f;
+            rearRight.sidewaysFriction = frictionCurve;
+        }
+        if(!frontRight.isGrounded){
+            frictionCurve = frontRight.sidewaysFriction;
+            frictionCurve.stiffness = 0f;
+            frontLeft.sidewaysFriction = frictionCurve;
+        }
+        if(!frontLeft.isGrounded){
+            frictionCurve = frontLeft.sidewaysFriction;
+            frictionCurve.stiffness = 0f;
+            frontRight.sidewaysFriction = frictionCurve;
         }
     }
 
-private void CalculateWheelPose()
-{
-    SetPose(frontRight, frontRightWheel,  _frontCamber, _frontToe);
-    SetPose(frontLeft, frontLeftWheel, _frontCamber, _frontToe);
-    SetPose(rearRight, rearRightWheel, _rearCamber, _rearToe);
-    SetPose(rearLeft, rearLeftWheel, _rearCamber, _rearToe);
-}
-
-private void SetPose(WheelCollider WC, Transform WT, float camberAngle = 0f, float toeAngle = 0f)
-{
-    //may need to transition to a mesh 
-    Quaternion q;
-    Vector3 pos;
-    WC.GetWorldPose(out pos, out q);
-
-    // Create a new quaternion with X and Y from q and Z from camberAngle
-    Quaternion Toe = Quaternion.Euler(0, toeAngle , 0);
-    Quaternion Camber = Quaternion.Euler(1,1,camberAngle);
-    WT.transform.position = pos;
-    WT.transform.rotation = q;
-    //WT.transform.rotation = Quaternion.Euler(q.eulerAngles.x * Axle.eulerAngles.x,  q.eulerAngles.y* Axle.eulerAngles.y, q.eulerAngles.z* Axle.eulerAngles.z);
-    WT.transform.rotation = q;
-    //WT.transform.localRotation *= Camber;
-}
-
-private void CalculateAxleForces(){
-
-    calculateWheelExtremes(rearRight);
-    calculateWheelExtremes(rearLeft);
-    calculateWheelExtremes(frontRight);
-    calculateWheelExtremes(frontLeft);
-
-    calculateToe(rearRight);
-    calculateToe(rearLeft);
-    calculateToe(frontRight);
-    calculateToe(frontLeft);
-
-
-}
-private void calculateToe(WheelCollider wheel)
-{
-    Vector3 forceDirection = new Vector3();
-    float forceMagnitude = 0f;
-
-    if (wheel == rearRight){
-        forceDirection = -transform.right;
-        forceMagnitude = _rearToe * Mathf.Abs(wheelHits[2].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
-    }
-    else if (wheel == rearLeft){
-        forceDirection = transform.right;
-        forceMagnitude = _rearToe * Mathf.Abs(wheelHits[3].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
-    }
-    else if (wheel == frontRight){
-        forceDirection = -transform.right;
-        forceMagnitude = _frontToe * Mathf.Abs(wheelHits[0].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
-    }
-    else if (wheel == frontLeft){
-        forceDirection = transform.right;
-        forceMagnitude = _frontToe * Mathf.Abs(wheelHits[1].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
-    }
-    
-
-    Vector3 forceVector = forceDirection * forceMagnitude;
-
-    carRigidBody.AddForceAtPosition(forceVector, wheel.transform.position);
-    // Draw the force line
-    Debug.DrawLine(wheel.transform.position, wheel.transform.position + forceVector, Color.red);
-}
-
-private float averageWheelRPM(WheelCollider left, WheelCollider right){
-    return Mathf.Abs((left.rpm + right.rpm) / 2f);
-}
-private float averageWheelRPMAllwheelDrive(WheelCollider Fleft, WheelCollider Fright, WheelCollider Rleft, WheelCollider Rright){
-    return ((Fleft.rpm+ Fright.rpm + Rleft.rpm + Rright.rpm) / 4f);
-}
-
-private void DriveTranCheck(){
-    int countTrue = 0; 
-    if(frontWheelDrive){ countTrue ++;}
-    if(rearWheelDrive){ countTrue ++;}
-    if(allWheelDrive){ countTrue ++; }
-    if(countTrue > 1 || countTrue < 1){
-        Debug.Log("Ensure only 1 powetran type is selected: setting default");
-        rearWheelDrive = true;
-        frontWheelDrive = false;
-        allWheelDrive = false;
-    }
-}
-
-private void SuspensionProperties(){
-    _frontWheelRadius = (frontRight.radius + frontLeft.radius)/2f;
-    _frontSuspensionHeight = (frontRight.suspensionDistance + frontLeft.suspensionDistance)/2f;
-    _frontDamper = (frontRight.wheelDampingRate + frontLeft.wheelDampingRate)/2f;
-    //frontSuspensionTravel = center - suspension height. 
-    _rearWheelRadius = (rearRight.radius + rearLeft.radius)/2f;
-    _rearSuspensionHeight = (rearRight.suspensionDistance + rearLeft.suspensionDistance)/2f;
-    _rearDamper= (rearRight.wheelDampingRate + rearLeft.wheelDampingRate)/2f;
-    ApplicationPointDist = (frontLeft.forceAppPointDistance+frontRight.forceAppPointDistance+rearLeft.forceAppPointDistance+rearRight.forceAppPointDistance)/4f;
-}
    //void SuspensionPropertiesUpdate(){
    //    //Front
    //    frontLeft.wheelRadius = _frontWheelRadius;
@@ -640,36 +662,32 @@ private void SuspensionProperties(){
    //}
 
     private void OnDrawGizmos()
-    {
-        // Draw Gizmos lines between the wheels
+    {   
+        //Chasis
         Gizmos.color = Color.yellow;
         Gizmos.DrawLine(frontLeft.transform.position, frontRight.transform.position);
         Gizmos.DrawLine(rearLeft.transform.position, rearRight.transform.position);
         Gizmos.DrawLine((rearLeft.transform.position + rearRight.transform.position)/2, (frontLeft.transform.position + frontRight.transform.position)/2);
 
-                         Gizmos.color = Color.blue;
-            Gizmos.DrawRay(frontLeft.transform.position, FrontantiRollVector);
-            Gizmos.DrawRay(frontRight.transform.position, -FrontantiRollVector);
-                                     
-            Gizmos.DrawRay(rearLeft.transform.position, RantiRollVector);
-            Gizmos.DrawRay(rearRight.transform.position, - RantiRollVector);
+        //ARB vectors
+        Gizmos.color = Color.blue;
+        Gizmos.DrawRay(frontLeft.transform.position , transform.up * FrontantiRollVector.z);
+        Gizmos.DrawRay(frontRight.transform.position , transform.up * FrontantiRollVector.z);          
+        Gizmos.DrawRay(rearLeft.transform.position , transform.up * RantiRollVector.z);
+        Gizmos.DrawRay(rearRight.transform.position ,  transform.up * RantiRollVector.z);
 
-            Gizmos.color = Color.magenta;
-            if(downForceLocations != null){
-                foreach(Transform dfLoc in downForceLocations){
-                    Gizmos.DrawRay(dfLoc.position, -transform.up);
-                }
+        Gizmos.color = Color.magenta;
+        if(downForceLocations != null){
+            foreach(Transform dfLoc in downForceLocations){
+                Gizmos.DrawRay(dfLoc.position, -transform.up);
             }
+        }
     }
 
     private void OnGUI()
     {   
-              // Set the position and size of the GUI label
         Rect labelRect = new Rect(10f, 10f, 100f, 20f);
-
-        // Display the number as text using GUI.Label
         GUI.Label(labelRect, "Speed KPH " + carRigidBody.velocity.magnitude *3.6f);
-
         Rect groudSlip1 = new Rect(Screen.width / 2 - 70f, 10f, 140f, 90f);
         GUI.Label(groudSlip1, "frSS: " + wheelHits[0].sidewaysSlip);
         Rect groudSlip2 = new Rect(Screen.width / 2 + 50f, 10f, 140f, 90f);
@@ -678,7 +696,6 @@ private void SuspensionProperties(){
         GUI.Label(groudSlip3, "rrSS: " + wheelHits[2].sidewaysSlip);
         Rect groudSlip4 = new Rect(Screen.width / 2 + 50f, 30f, 140f, 90f);
         GUI.Label(groudSlip4, "rlSS: " + wheelHits[3].sidewaysSlip);
-
         Rect forwardSlip1 = new Rect(Screen.width / 2 - 70f, 50f, 140f, 90f);
         GUI.Label(forwardSlip1, "frFS: " + wheelHits[0].forwardSlip);
         Rect forwardSlip2 = new Rect(Screen.width / 2 + 50f, 50f, 140f, 90f);
@@ -691,7 +708,8 @@ private void SuspensionProperties(){
         GUI.Label(labelRect2, "ForwardSlip FY" + rearRight.forwardFriction.stiffness);
         Rect labelRect3 = new Rect(40f, 90f, 140f, 90f);
         GUI.Label(labelRect3, "Clutch: " + clutch);
-                Rect labelRect4 = new Rect(40f, 130f, 190f, 90f);
+        Rect labelRect4 = new Rect(40f, 130f, 190f, 90f);
         GUI.Label(labelRect4, "FR compression: " );
     }
 }
+
