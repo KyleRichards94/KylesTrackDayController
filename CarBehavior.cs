@@ -8,6 +8,7 @@ public class CarBehavior : MonoBehaviour
 {   
     [Header("Input Properties")]
     public float steeringSmoothness = 1f; 
+    private static float _steeringSmoothness;
 
     [Header("PowerTrain properties")]
     public float powerOutput = 500f;
@@ -19,8 +20,7 @@ public class CarBehavior : MonoBehaviour
     public bool frontWheelDrive = false;
     public bool allWheelDrive = false;
     public float torqueOutput;
-    public int CurrentGear = 0;
-
+    public int CurrentGear = 2;
     private float idleRpm = 2500f;
 
     /// <summary>
@@ -77,6 +77,8 @@ public class CarBehavior : MonoBehaviour
 
     [Header("Handling Properties")]
     public bool tractionControl = true;
+    public int tcLevel = 2;
+    private bool tcLBL = false;
     public float turningRadius = 1.5f;
 
     public float frontARB = 50000f;
@@ -139,6 +141,9 @@ public class CarBehavior : MonoBehaviour
     private float gearUpInputValue;
     private float gearDownInputValue;
     private float clutchInputValue;
+    private Vector3 spawnLocation;
+
+    private char[] gearIndicator = new char[]{'R','N','1','2','3','4','5','6','7','8'};
     
 
     private void OnAccelerate(InputValue value){
@@ -185,6 +190,7 @@ public class CarBehavior : MonoBehaviour
             return false;
          }
     }
+    
     //private void OnGearup(InputValue value){   methods noto currently used
     //    gearUpInputValue = value.Get<float>();
     //}
@@ -222,6 +228,7 @@ public class CarBehavior : MonoBehaviour
         SuspensionProperties();
         audioCheck();
         calculateVehicleWheelBase();  
+        spawnLocation = carTranform.position;
     }
 
     void instanciateEmitters(){
@@ -251,6 +258,7 @@ public class CarBehavior : MonoBehaviour
         }
     }
     private void SuspensionProperties(){
+        _steeringSmoothness = steeringSmoothness;
         _frontWheelRadius = (frontRight.radius + frontLeft.radius)/2f;
         _frontSuspensionHeight = (frontRight.suspensionDistance + frontLeft.suspensionDistance)/2f;
         _frontDamper = (frontRight.wheelDampingRate + frontLeft.wheelDampingRate)/2f;
@@ -280,12 +288,25 @@ public class CarBehavior : MonoBehaviour
         CalculateSteerAngle();
         TireSkidEmission();
         getGroundHits();
+
+        if(Input.GetKeyDown(KeyCode.R)){
+            carTranform.position = spawnLocation;
+            carTranform.rotation = new Quaternion(0f,0f,0f,0f);
+        }
+        if(Input.GetKeyDown(KeyCode.T)){
+            if(tractionControl == true){
+                tractionControl = false;
+            } else {
+                tractionControl = true;
+            }
+        }
+
     }
 
     private void AudioController(){
        if(engineAudioSource != null){
             foreach(AudioSource engine in engineAudioSource){
-                float pitch = Mathf.Lerp(-0.1f, 1.2f, engineRPM / redLineRPM); 
+                float pitch = Mathf.Lerp(-0.4f, 1.7f, engineRPM / redLineRPM); 
                 engine.pitch = pitch;
             }
         }
@@ -298,7 +319,7 @@ public class CarBehavior : MonoBehaviour
         }
         if(OnGearDown()   && CurrentGear >= 0){
             CurrentGear -= 1;
-        } else if(Input.GetKeyDown(KeyCode.Z)  && CurrentGear >= 0){
+        } else if(Input.GetKeyDown(KeyCode.Z)  && CurrentGear > 0){
             CurrentGear -= 1;
         }
     }
@@ -318,9 +339,9 @@ public class CarBehavior : MonoBehaviour
 
         // Apply lerp to smoothly transition between the current and desired values
         if(wheelHits[0].sidewaysSlip > 0.2f && wheelHits[1].sidewaysSlip > 0.2f){
-            steeringSmoothness = 20f * Mathf.Abs(wheelHits[0].sidewaysSlip + wheelHits[1].sidewaysSlip)/2;
+            steeringSmoothness = _steeringSmoothness * Mathf.Abs(wheelHits[0].sidewaysSlip + wheelHits[1].sidewaysSlip)/2;
         } else {
-            steeringSmoothness = 20f;
+            steeringSmoothness = _steeringSmoothness;
         }
         
         targetLeftWAngle = Mathf.Lerp(targetLeftWAngle, desiredLeftWAngle, steeringSmoothness * Time.deltaTime);
@@ -381,17 +402,17 @@ public class CarBehavior : MonoBehaviour
         ApplyfrontARB();
         ApplyrearARB();
         ApplyStabilization();
+        ApplyTractionControl();
         
     }
     
     private void CalculateMotorTorque(){
         float AccelInput = Mathf.Clamp(accellerationInputValue + Input.GetAxis("Vertical"), 0, 1);
-        clutch = 1- clutchInputValue;
-
+        clutch = 1- (clutchInputValue + Input.GetAxis("Fire3"));
         if(engineRPM > redLineRPM-50f){
             engineRPM -= Random.Range(600,500);
         }
-        if(AccelInput == 0){
+        if((AccelInput == 0 && clutch < 0.2f) || (AccelInput == 0 && gearIndicator[CurrentGear] == 'N')){
             engineRPM -= 10f; //engine braking
         }
         if(rearWheelDrive){
@@ -413,23 +434,7 @@ public class CarBehavior : MonoBehaviour
                 if(rearLeft.rpm < rearRight.rpm){
                     torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] * 1.8f) + rearRight.rpm*differentialLockRatio)/1.2f;
                 }
-                //Active Traction Control. 
-                if(rearRight.rpm > engineRPM){
-                    rearRight.brakeTorque = 1600f;
-                }
 
-                if(rearLeft.rpm > engineRPM){
-                    rearLeft.brakeTorque = 1600f;
-                }
-
-                if(tractionControl){
-                    if(Mathf.Abs(wheelHits[2].sidewaysSlip) > 0.2f || Mathf.Abs(wheelHits[3].sidewaysSlip) > 0.2f){
-                        torqueOutput = 0;
-                        rearLeft.brakeTorque = 1600f;
-                        rearRight.brakeTorque = 1600f;
-                        engineRPM -= 50f;
-                    }
-                }
             }
         }
         if(allWheelDrive){
@@ -473,15 +478,25 @@ public class CarBehavior : MonoBehaviour
             } else if((steerInputValue < 0 && Wheel == frontRight) || (Input.GetAxis("Horizontal") < 0 && Wheel == frontRight)){
                 angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _frontCamber;
                 stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
+                
             }
         } else if (Wheel == rearRight ||Wheel == rearLeft){
             if((steerInputValue > 0 && Wheel == rearLeft) || (Input.GetAxis("Horizontal") > 0 && Wheel == rearLeft)){
                 angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _rearCamber;
                 stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
+
+                //// rrdrive calc
+                //if(rearWheelDrive == true && Mathf.Abs(WheelSpinRatio(Wheel) )> 0.1f){
+                //    steerInputValue =  - WheelSpinRatio(Wheel)* Mathf.Abs(carRigidBody.angularVelocity.z ); 
+                //}
             }else if((steerInputValue < 0 && Wheel == rearRight) || (Input.GetAxis("Horizontal") < 0 && Wheel == rearRight)){
-                
                 angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _rearCamber;
                 stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
+
+                //wheel slip steering catch calculatuion
+                //if(rearWheelDrive == true && Mathf.Abs(WheelSpinRatio(Wheel) )> 0.1f){
+                //    steerInputValue =  + WheelSpinRatio(Wheel)* Mathf.Abs(carRigidBody.angularVelocity.z ); 
+                //}
             }
         }
 
@@ -644,6 +659,27 @@ public class CarBehavior : MonoBehaviour
         }
     }
 
+    private void ApplyTractionControl(){
+                    //Active Traction Control. 
+        tcLBL = false;
+        if(tractionControl){
+            if(rearRight.rpm > engineRPM){
+                rearRight.brakeTorque = 5000f;
+                tcLBL = true;
+            }
+            if(rearLeft.rpm > engineRPM){
+                rearLeft.brakeTorque = 5000f;
+                tcLBL = true;
+            }
+            if(Mathf.Abs(wheelHits[2].sidewaysSlip) > 0.14f|| Mathf.Abs(wheelHits[3].sidewaysSlip) > 0.14f ){
+                torqueOutput = torqueOutput/tcLevel;
+                rearLeft.brakeTorque = brakeForce/2f;
+                rearRight.brakeTorque = brakeForce/2f;
+                engineRPM -= 5f * tcLevel;
+                tcLBL = true;
+            } 
+        }
+    }
    //void SuspensionPropertiesUpdate(){
    //    //Front
    //    frontLeft.wheelRadius = _frontWheelRadius;
@@ -675,6 +711,10 @@ public class CarBehavior : MonoBehaviour
         Gizmos.DrawRay(frontRight.transform.position , transform.up * FrontantiRollVector.z);          
         Gizmos.DrawRay(rearLeft.transform.position , transform.up * RantiRollVector.z);
         Gizmos.DrawRay(rearRight.transform.position ,  transform.up * RantiRollVector.z);
+
+        //Driftgizmo,
+        Gizmos.color = Color.red;
+        Gizmos.DrawRay(carTranform.position, carRigidBody.angularVelocity.x * carRigidBody.velocity.magnitude* (transform.right ));
 
         Gizmos.color = Color.magenta;
         if(downForceLocations != null){
@@ -710,6 +750,18 @@ public class CarBehavior : MonoBehaviour
         GUI.Label(labelRect3, "Clutch: " + clutch);
         Rect labelRect4 = new Rect(40f, 130f, 190f, 90f);
         GUI.Label(labelRect4, "FR compression: " );
+
+        Rect labelRectGear= new Rect(Screen.width / 2, Screen.height - 250f, 190f, 90f);
+        GUI.Label(labelRectGear, "Gear : " + gearIndicator[CurrentGear] );
+
+       Rect labelRectRPM= new Rect(Screen.width / 2, Screen.height - 290f, 190f, 90f);
+       GUI.Label(labelRectRPM, "RPM : " + engineRPM );
+
+        Rect labelRectTC= new Rect(Screen.width / 3, Screen.height - 290f, 190f, 90f);
+        if(tcLBL == true){
+            GUI.Label(labelRectTC, "TC ON" );
+        }
     }
 }
+
 
