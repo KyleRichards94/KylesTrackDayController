@@ -785,7 +785,7 @@ public class CarBehavior : MonoBehaviour
        GUI.Label(labelRectRPM, "RPM : " + engineRPM );
 
         Rect labelRect = new Rect(Screen.width / 2, Screen.height - 250f, 170f, 90f);
-        GUI.Label(labelRect, "Speed KPH " + (carRigidBody.velocity.magnitude * 3.6f).ToString(), speedGui);
+        GUI.Label(labelRect, "Speed KPH " + (carRigidBody.velocity.magnitude * 3.6f).ToString());
 
         Rect labelRectTC= new Rect(Screen.width / 3, Screen.height - 290f, 190f, 90f);
         if(tcLBL == true){
