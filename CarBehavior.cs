@@ -351,11 +351,11 @@ public class CarBehavior : MonoBehaviour
         targetLeftWAngle = Mathf.Lerp(targetLeftWAngle, desiredLeftWAngle, steeringSmoothness * Time.deltaTime);
         targetRightWAngle = Mathf.Lerp(targetRightWAngle, desiredRightWAngle, steeringSmoothness * Time.deltaTime);
 
-        frontRight.steerAngle = targetRightWAngle / (1+(carRigidBody.velocity.magnitude/10f));
-        frontLeft.steerAngle = targetLeftWAngle / (1+(carRigidBody.velocity.magnitude/10f));
+        frontRight.steerAngle = targetRightWAngle / (1+(carRigidBody.velocity.magnitude/5f));
+        frontLeft.steerAngle = targetLeftWAngle / (1+(carRigidBody.velocity.magnitude/5f));
 
         if(SteeringWheel != null){
-            SteeringWheel.localRotation = Quaternion.Euler(23f, 0f ,-(targetLeftWAngle+targetRightWAngle) );
+            SteeringWheel.localRotation = Quaternion.Euler(23f, 0f ,-(frontRight.steerAngle+frontLeft.steerAngle)*2f );
         }
     }
      private void tireSkidEmission(){
@@ -438,9 +438,7 @@ public class CarBehavior : MonoBehaviour
     private void CalculateMotorTorque(){
         float AccelInput = Mathf.Clamp(accellerationInputValue + Input.GetAxis("Vertical"), 0, 1);
         clutch = 1- (clutchInputValue + Input.GetAxis("Fire3"));
-        if(engineRPM > redLineRPM-50f){
-            engineRPM -= Random.Range(600,500);
-        }
+
         if((AccelInput == 0 && clutch < 0.2f) || (AccelInput == 0 && gearIndicator[CurrentGear] == 'N')){
             engineRPM -= 10f; //engine braking
         }
@@ -450,9 +448,8 @@ public class CarBehavior : MonoBehaviour
                 engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(engineRPM, redLineRPM * AccelInput) + Random.Range(-50, 50), Time.deltaTime*4f);
                 torqueOutput = 0;
             } else {
-                float targetRPM = Mathf.Max(engineRPM, engineRPM);
                 wheelRPM = averageWheelRPM(rearRight,rearLeft) * gearRatios[CurrentGear] * (differentialRatio);
-                engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(idleRpm, wheelRPM), Time.deltaTime*3f);
+                engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(idleRpm, wheelRPM), Time.deltaTime*2.5f);
                 if(engineRPM < idleRpm){
                     engineRPM = idleRpm + Random.Range(50,-50);
                 }
@@ -471,6 +468,11 @@ public class CarBehavior : MonoBehaviour
         }
         if(frontWheelDrive){
             wheelRPM = averageWheelRPM(frontRight,frontLeft) * gearRatios[CurrentGear] * (differentialRatio);
+        }
+
+        if(engineRPM > redLineRPM-50f){
+            engineRPM -= Random.Range(700,500);
+            torqueOutput /= 1.3f;
         }
         rearLeft.motorTorque = torqueOutput * AccelInput;
         rearRight.motorTorque = torqueOutput  * AccelInput;
@@ -771,13 +773,7 @@ public class CarBehavior : MonoBehaviour
         GUI.Label(forwardSlip3, "rrFS: " + wheelHits[2].forwardSlip);
         Rect forwardSlip4 = new Rect(Screen.width / 2 + 50f, 70f, 140f, 90f);
         GUI.Label(forwardSlip4, "rlFS: " + wheelHits[3].forwardSlip);
-        Rect labelRect2 = new Rect(40f, 40f, 140f, 60f);
-        GUI.Label(labelRect2, "ForwardSlip FY" + rearRight.forwardFriction.stiffness);
-        Rect labelRect3 = new Rect(40f, 90f, 140f, 90f);
-        GUI.Label(labelRect3, "Clutch: " + clutch);
-        Rect labelRect4 = new Rect(40f, 130f, 190f, 90f);
-        GUI.Label(labelRect4, "FR compression: " );
-
+       
         Rect labelRectGear= new Rect(Screen.width / 2, Screen.height - 220f, 190f, 90f);
         GUI.Label(labelRectGear, "Gear : " + gearIndicator[CurrentGear] );
 
@@ -791,6 +787,29 @@ public class CarBehavior : MonoBehaviour
         if(tcLBL == true){
             GUI.Label(labelRectTC, "TC ON" );
         }
+
+                  Rect ControlsLblR = new Rect(200f,200f,340f,140f);
+        GUI.Label(ControlsLblR, "Reset: R");
+          Rect ControlsLblC = new Rect(200f,220f,340f,140f);
+        GUI.Label(ControlsLblC, "Change Camera: C");
+
+        Rect ControlsLbl1 = new Rect(200f,250f,340f,140f);
+        GUI.Label(ControlsLbl1, "Accellerate: W, or Arrow Up. RT gamepad");
+
+         Rect ControlsLbl2 = new Rect(200f,270f,340f,140f);
+        GUI.Label(ControlsLbl2, "Brake: S, or Arrow Down. LT gamepad");
+        
+        Rect ControlsLbl3 = new Rect(200f,290f,340f,140f);
+        GUI.Label(ControlsLbl3, "Steer: Arrow R/L or A/D. Left stick gamepad");
+
+                Rect ControlsLbl4 = new Rect(200f,310f,340f,140f);
+        GUI.Label(ControlsLbl4, "Gear UP: X or Cross Gamepad");
+        
+                Rect ControlsLbl5 = new Rect(200f,330f,340f,140f);
+        GUI.Label(ControlsLbl5, "Gear DOWN: Z Or Triangle Gamepad");
+
+         Rect ControlsLbl6 = new Rect(200f,350f,340f,340f);
+        GUI.Label(ControlsLbl6, "Clutch: Shift, or R1 gamepad");
     }
 }
 
