@@ -505,16 +505,15 @@ public class CarBehavior : MonoBehaviour
     }
    
     private void calculateCamber(){
-        Vector3 FLCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) +(_frontCamber*carRigidBody.transform.right);
-        Vector3 FRCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) - (_frontCamber*carRigidBody.transform.right);
-        Vector3 RLCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) +(_rearCamber*carRigidBody.transform.right);
-        Vector3 RRCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) - (_rearCamber*carRigidBody.transform.right);
+        Vector3 FLCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) - (_frontCamber*carRigidBody.transform.right);
+        Vector3 FRCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) + (_frontCamber*carRigidBody.transform.right);
+        Vector3 RLCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) - (_rearCamber*carRigidBody.transform.right);
+        Vector3 RRCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) + (_rearCamber*carRigidBody.transform.right);
         RaycastHit hitFL;
         RaycastHit downFL;
 
         //FrontLeft Camber
-        if (Physics.Raycast(frontLeft.transform.position, FLCamber, out hitFL))
-        {
+        if (Physics.Raycast(frontLeft.transform.position, FLCamber, out hitFL)){
             Debug.DrawRay(frontLeft.transform.position, FLCamber * hitFL.distance, Color.red);
         } 
         if(Physics.Raycast(frontLeft.transform.position, -carTranform.transform.up, out downFL)){
@@ -528,8 +527,7 @@ public class CarBehavior : MonoBehaviour
         RaycastHit hitFR;
         RaycastHit downFR;
         //FrontRight camber
-        if (Physics.Raycast(frontRight.transform.position, FRCamber, out hitFR))
-        {
+        if (Physics.Raycast(frontRight.transform.position, FRCamber, out hitFR)){
             float camberMagnitude = FRCamber.magnitude;
             Debug.DrawRay(frontRight.transform.position, FRCamber * hitFR.distance, Color.red);
         } 
@@ -544,8 +542,7 @@ public class CarBehavior : MonoBehaviour
         RaycastHit hitRL;
         RaycastHit downRL;
         //RearLeft camber
-         if (Physics.Raycast(rearLeft.transform.position, RLCamber, out hitRL))
-        {
+         if (Physics.Raycast(rearLeft.transform.position, RLCamber, out hitRL)){
             Debug.DrawRay(rearLeft.transform.position, RLCamber * hitRL.distance, Color.red);
         } 
         if(Physics.Raycast(rearLeft.transform.position, -carTranform.transform.up, out downRL)){
@@ -559,8 +556,7 @@ public class CarBehavior : MonoBehaviour
         RaycastHit hitRR;
         RaycastHit downRR;
         //RearRight camber
-        if (Physics.Raycast(rearRight.transform.position, RRCamber, out hitRR))
-        {
+        if (Physics.Raycast(rearRight.transform.position, RRCamber, out hitRR)){
             Debug.DrawRay(rearRight.transform.position, RRCamber * hitRR.distance, Color.red);
         } 
         // i could replace the 0.7 in the clamped evaluation with some "realness" factor, that limits how far the wheels can slip under corner exit.
