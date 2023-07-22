@@ -98,12 +98,14 @@ public class CarBehavior : MonoBehaviour
     [SerializeField] private float _frontWheelRadius;
     [SerializeField] private float _frontSuspensionHeight;
     [SerializeField] private float _frontSuspensionTravel;
+    [SerializeField] private float _frontStiffness;
     [SerializeField] private float _frontDamper;
     [SerializeField] private float _frontCamber;
     [SerializeField] private float _frontToe;
     [SerializeField] private float _rearWheelRadius;
     [SerializeField] private float _rearSuspensionHeight;
     [SerializeField] private float _rearSuspensionTravel;
+    [SerializeField] private float _rearStiffness;
     [SerializeField] private float _rearDamper;
     [SerializeField] private float _rearCamber;
     [SerializeField] private float _rearToe;
@@ -265,11 +267,13 @@ public class CarBehavior : MonoBehaviour
         _frontWheelRadius = (frontRight.radius + frontLeft.radius)/2f;
         _frontSuspensionHeight = (frontRight.suspensionDistance + frontLeft.suspensionDistance)/2f;
         _frontDamper = (frontRight.wheelDampingRate + frontLeft.wheelDampingRate)/2f;
+        _frontStiffness = (frontRight.sidewaysFriction.stiffness + frontLeft.sidewaysFriction.stiffness)/2f;
         //frontSuspensionTravel = center - suspension height. 
         _rearWheelRadius = (rearRight.radius + rearLeft.radius)/2f;
         _rearSuspensionHeight = (rearRight.suspensionDistance + rearLeft.suspensionDistance)/2f;
         _rearDamper= (rearRight.wheelDampingRate + rearLeft.wheelDampingRate)/2f;
         ApplicationPointDist = (frontLeft.forceAppPointDistance+frontRight.forceAppPointDistance+rearLeft.forceAppPointDistance+rearRight.forceAppPointDistance)/4f;
+         _rearStiffness = (rearRight.sidewaysFriction.stiffness + rearLeft.sidewaysFriction.stiffness)/2f;
     }
     private void audioCheck(){
         if(engineAudioSource != null){
@@ -304,6 +308,8 @@ public class CarBehavior : MonoBehaviour
                 tractionControl = true;
             }
         }
+
+
 
     }
 
@@ -442,29 +448,34 @@ public class CarBehavior : MonoBehaviour
         if((AccelInput == 0 && clutch < 0.2f) || (AccelInput == 0 && gearIndicator[CurrentGear] == 'N')){
             engineRPM -= 10f; //engine braking
         }
-        if(rearWheelDrive){
-
-            if(clutch < 0.2f){
+        if(clutch < 0.2f){
                 engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(engineRPM, redLineRPM * AccelInput) + Random.Range(-50, 50), Time.deltaTime*4f);
                 torqueOutput = 0;
-            } else {
-                wheelRPM = averageWheelRPM(rearRight,rearLeft) * gearRatios[CurrentGear] * (differentialRatio);
-                engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(idleRpm, wheelRPM), Time.deltaTime*2.5f);
-                if(engineRPM < idleRpm){
-                    engineRPM = idleRpm + Random.Range(50,-50);
-                }
-                /// Locked DIFF
-                if(rearRight.rpm < rearLeft.rpm){
-                    torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] ) + rearLeft.rpm*differentialLockRatio)/(1 - differentialLockRatio);
-                }
-                if(rearLeft.rpm < rearRight.rpm){
-                    torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] ) + rearRight.rpm*differentialLockRatio)/(1 - differentialLockRatio);
-                }
+        } if(rearWheelDrive){
 
+            wheelRPM = averageWheelRPM(rearRight,rearLeft) * gearRatios[CurrentGear] * (differentialRatio);
+            engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(idleRpm, wheelRPM), Time.deltaTime*2.5f);
+            if(engineRPM < idleRpm){
+                engineRPM = idleRpm + Random.Range(50,-50);
             }
+            /// Locked DIFF
+            torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] ) + rearLeft.rpm*differentialLockRatio)/(1 - differentialLockRatio);
+            if(rearRight.rpm < rearLeft.rpm){
+                torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] ) + rearLeft.rpm*differentialLockRatio)/(1 - differentialLockRatio);
+            }
+            if(rearLeft.rpm < rearRight.rpm){
+                torqueOutput = ((((engineRPM* RPMToTorque.Evaluate(engineRPM))/5252f) * clutch * gearRatios[CurrentGear] ) + rearRight.rpm*differentialLockRatio)/(1 - differentialLockRatio);
+            }
+
+
+            rearLeft.motorTorque = torqueOutput * AccelInput;
+            rearRight.motorTorque = torqueOutput  * AccelInput;  
         }
-        if(allWheelDrive){
-            engineRPM = averageWheelRPMAllwheelDrive(frontLeft, frontRight, rearLeft, rearRight);
+
+         if(allWheelDrive){
+            wheelRPM = averageWheelRPMAllwheelDrive(frontLeft, frontRight, rearLeft, rearRight)*10f;
+            engineRPM = Mathf.Lerp(engineRPM, Mathf.Max(idleRpm, wheelRPM), Time.deltaTime*2.5f);
+            
         }
         if(frontWheelDrive){
             wheelRPM = averageWheelRPM(frontRight,frontLeft) * gearRatios[CurrentGear] * (differentialRatio);
@@ -474,74 +485,98 @@ public class CarBehavior : MonoBehaviour
             engineRPM -= Random.Range(700,500);
             torqueOutput /= 1.3f;
         }
-        rearLeft.motorTorque = torqueOutput * AccelInput;
-        rearRight.motorTorque = torqueOutput  * AccelInput;
+
 
     }
     private float averageWheelRPM(WheelCollider left, WheelCollider right){
         return Mathf.Abs((left.rpm + right.rpm) / 2f);
     }
     private float averageWheelRPMAllwheelDrive(WheelCollider Fleft, WheelCollider Fright, WheelCollider Rleft, WheelCollider Rright){
-        return ((Fleft.rpm+ Fright.rpm + Rleft.rpm + Rright.rpm) / 4f);
+        return Mathf.Abs((Fleft.rpm + Fright.rpm + Rleft.rpm + Rright.rpm) / 4f);
     }
     private void CalculateAxleForces(){
 
-        calculateWheelExtremes(rearRight);
-        calculateWheelExtremes(rearLeft);
-        calculateWheelExtremes(frontRight);
-        calculateWheelExtremes(frontLeft);
+        calculateCamber();
 
         calculateToe(rearRight);
         calculateToe(rearLeft);
         calculateToe(frontRight);
         calculateToe(frontLeft);
     }
-    private void calculateWheelExtremes(WheelCollider Wheel){
-        WheelFrictionCurve frictionCurveR = Wheel.sidewaysFriction;
-        float angularVelocity = 0f;
-        float stiffnessIncrease = 0f;
+   
+    private void calculateCamber(){
+        Vector3 FLCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) +(_frontCamber*carRigidBody.transform.right);
+        Vector3 FRCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) - (_frontCamber*carRigidBody.transform.right);
+        Vector3 RLCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) +(_rearCamber*carRigidBody.transform.right);
+        Vector3 RRCamber = (Quaternion.Euler(0f, carTranform.rotation.eulerAngles.y, 0f) * Vector3.down) - (_rearCamber*carRigidBody.transform.right);
+        RaycastHit hitFL;
+        RaycastHit downFL;
 
-        if(Wheel == frontLeft || Wheel == frontRight){
-
-            if((steerInputValue > 0 && Wheel == frontLeft) || (Input.GetAxis("Horizontal") > 0 && Wheel == frontLeft)){ //Youre turning right and the outside wheels have their contact patch increased by the camber value. 
-                angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _frontCamber;
-                stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
-            } else if((steerInputValue < 0 && Wheel == frontRight) || (Input.GetAxis("Horizontal") < 0 && Wheel == frontRight)){
-                angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _frontCamber;
-                stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
-                
-            }
-        } else if (Wheel == rearRight ||Wheel == rearLeft){
-            if((steerInputValue > 0 && Wheel == rearLeft) || (Input.GetAxis("Horizontal") > 0 && Wheel == rearLeft)){
-                angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _rearCamber;
-                stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
-
-                //// rrdrive calc
-                //if(rearWheelDrive == true && Mathf.Abs(WheelSpinRatio(Wheel) )> 0.1f){
-                //    steerInputValue =  - WheelSpinRatio(Wheel)* Mathf.Abs(carRigidBody.angularVelocity.z ); 
-                //}
-            }else if((steerInputValue < 0 && Wheel == rearRight) || (Input.GetAxis("Horizontal") < 0 && Wheel == rearRight)){
-                angularVelocity = Mathf.Abs(carRigidBody.angularVelocity.y) * _rearCamber;
-                stiffnessIncrease = Mathf.Clamp(angularVelocity, 0f, 1f); // Define the maximum stiffness increase value
-
-                //wheel slip steering catch calculatuion
-                //if(rearWheelDrive == true && Mathf.Abs(WheelSpinRatio(Wheel) )> 0.1f){
-                //    steerInputValue =  + WheelSpinRatio(Wheel)* Mathf.Abs(carRigidBody.angularVelocity.z ); 
-                //}
-            }
+        //FrontLeft Camber
+        if (Physics.Raycast(frontLeft.transform.position, FLCamber, out hitFL))
+        {
+            Debug.DrawRay(frontLeft.transform.position, FLCamber * hitFL.distance, Color.red);
+        } 
+        if(Physics.Raycast(frontLeft.transform.position, -carTranform.transform.up, out downFL)){
+            Debug.DrawRay(frontLeft.transform.position, Vector3.down * downFL.distance, Color.blue);
+             float distanceBetweenHitPoints = Vector3.Distance(hitFL.point, downFL.point);
+             WheelFrictionCurve frictionCurveFL = frontLeft.sidewaysFriction;
+             frictionCurveFL.stiffness = _frontStiffness - (distanceBetweenHitPoints*2f);
+             frontLeft.sidewaysFriction = frictionCurveFL;
         }
 
-        if(accellerationInputValue > 0){
-            frictionCurveR.stiffness = Mathf.Clamp(2f - WheelSpinRatio(Wheel), 0.3f, 2f ) + stiffnessIncrease;
-        } else {
-            frictionCurveR.stiffness = 1 + stiffnessIncrease;
+        RaycastHit hitFR;
+        RaycastHit downFR;
+        //FrontRight camber
+        if (Physics.Raycast(frontRight.transform.position, FRCamber, out hitFR))
+        {
+            float camberMagnitude = FRCamber.magnitude;
+            Debug.DrawRay(frontRight.transform.position, FRCamber * hitFR.distance, Color.red);
+        } 
+        if(Physics.Raycast(frontRight.transform.position, -carTranform.transform.up, out downFR)){
+            Debug.DrawRay(frontRight.transform.position, Vector3.down * downFR.distance, Color.blue);
+             float distanceBetweenHitPoints = Vector3.Distance(hitFR.point, downFR.point);
+             WheelFrictionCurve frictionCurveFR = frontRight.sidewaysFriction;
+             frictionCurveFR.stiffness = _frontStiffness - (distanceBetweenHitPoints*2f);
+             frontRight.sidewaysFriction = frictionCurveFR;
         }
 
-        Wheel.sidewaysFriction = frictionCurveR ;
-        Debug.DrawLine(Wheel.transform.position + (-transform.up * _rearWheelRadius), Wheel.transform.position + (transform.up * stiffnessIncrease), Color.red);
+        RaycastHit hitRL;
+        RaycastHit downRL;
+        //RearLeft camber
+         if (Physics.Raycast(rearLeft.transform.position, RLCamber, out hitRL))
+        {
+            Debug.DrawRay(rearLeft.transform.position, RLCamber * hitRL.distance, Color.red);
+        } 
+        if(Physics.Raycast(rearLeft.transform.position, -carTranform.transform.up, out downRL)){
+            Debug.DrawRay(rearLeft.transform.position, Vector3.down * downRL.distance, Color.blue);
+             float distanceBetweenHitPoints = Vector3.Distance(hitRL.point, downRL.point);
+                WheelFrictionCurve frictionCurveRL = rearLeft.sidewaysFriction;
+             frictionCurveRL.stiffness = (_rearStiffness * Mathf.Clamp( WheelSpinRatio(rearLeft), 0.8f, 1f) )  - (distanceBetweenHitPoints*2f);
+             rearLeft.sidewaysFriction = frictionCurveRL;
+        }
+
+        RaycastHit hitRR;
+        RaycastHit downRR;
+        //RearRight camber
+        if (Physics.Raycast(rearRight.transform.position, RRCamber, out hitRR))
+        {
+            Debug.DrawRay(rearRight.transform.position, RRCamber * hitRR.distance, Color.red);
+        } 
+        // i could replace the 0.7 in the clamped evaluation with some "realness" factor, that limits how far the wheels can slip under corner exit.
+        // however this could also be balanced with a good implimentation of torsion controll polling.
+        if(Physics.Raycast(rearRight.transform.position, -carTranform.transform.up, out downRR)){
+            Debug.DrawRay(rearRight.transform.position, Vector3.down * downRR.distance, Color.blue);
+             float distanceBetweenHitPoints = Vector3.Distance(hitRR.point, downRR.point);
+            WheelFrictionCurve frictionCurveRR = rearRight.sidewaysFriction;
+             frictionCurveRR.stiffness = (_rearStiffness * Mathf.Clamp( WheelSpinRatio(rearRight), 0.8f, 1f ))  - (distanceBetweenHitPoints*2f);
+             rearRight.sidewaysFriction = frictionCurveRR;
+        }
     }
+
+
     private float WheelSpinRatio(WheelCollider wheelCollider){
-        return  Mathf.Abs(wheelCollider.rpm+1f) / (Mathf.Abs(frontRight.rpm + frontLeft.rpm)+0.0000001f/2);
+        return  ((Mathf.Abs(frontRight.rpm + frontLeft.rpm))/2) / Mathf.Abs(wheelCollider.rpm+1f) ;
     }
     private void calculateToe(WheelCollider wheel){
         Vector3 forceDirection = new Vector3();
@@ -555,11 +590,11 @@ public class CarBehavior : MonoBehaviour
             forceMagnitude = _rearToe * Mathf.Abs(wheelHits[3].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
         }
         else if (wheel == frontRight){
-            forceDirection = -transform.right;
+            forceDirection = -frontRight.transform.right;
             forceMagnitude = _frontToe * Mathf.Abs(wheelHits[0].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
         }
         else if (wheel == frontLeft){
-            forceDirection = transform.right;
+            forceDirection = frontLeft.transform.right;
             forceMagnitude = _frontToe * Mathf.Abs(wheelHits[1].sidewaysSlip) * Mathf.Abs(carRigidBody.velocity.z);
         }
         
