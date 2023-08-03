@@ -173,7 +173,7 @@ public class VolumetricWheelAddon : MonoBehaviour
                                 hitdist = hit.distance  + epsilon;
 
                                 springLength = Mathf.Clamp(springLength, minLength, maxLength);
-                                springVelocity = Mathf.Abs(lastLength - springLength) / Time.fixedDeltaTime*0.1f;
+                                springVelocity = Mathf.Abs(lastLength - springLength) / Time.fixedDeltaTime;
                                 Debug.Log("Last Len" + lastLength);
                                 CurSuspensionLength =_wheelCollider.suspensionDistance - (springLength); // length of ray - wheel dist = final length of suspension
                                 float Spring_F = SuspensionStiffness * CurSuspensionLength; 
@@ -193,7 +193,7 @@ public class VolumetricWheelAddon : MonoBehaviour
                                  fy = ((slip)  * ( SuspensionStiffness -  normalizedSuspensionForce))/(countHits);
 
                                 springForce = SuspensionStiffness * (_wheelCollider.suspensionDistance  - springLength) * (tirePressure/originalRadius);
-                                suspensionForce = ((springForce + damperForce) *( (transform.up +  hit.normal)/2f))/(( total.totalCount));
+                                suspensionForce = ((springForce + damperForce) *( (transform.up*(Vector3.Angle(rayDirection, -Vector3.up)/10f) +  hit.normal)/2f))/(( total.totalCount));
 
                                 //_wheelCollider.ResetSprungMasses();
 
@@ -211,7 +211,7 @@ public class VolumetricWheelAddon : MonoBehaviour
                                 //Quaternion Camber = Quaternion.Euler(0f,0f,-camberAngle*10f);
                                 //WT.transform.localRotation = Camber * Toe * q;
                              
-                                wheelModel.transform.position = new Vector3(pos.x,Mathf.Lerp( pos.y + Mathf.Abs(CurSuspensionLength),pos.y, Time.deltaTime *5f),pos.z);
+                                wheelModel.transform.position = new Vector3(pos.x,Mathf.Lerp( pos.y + Mathf.Abs(CurSuspensionLength),pos.y, Time.deltaTime *1f),pos.z);
                                 wheelModel.transform.rotation = q;
                                 
                                 //_wheelCollider.suspensionDistance = CurSuspensionLength;
@@ -234,7 +234,7 @@ public class VolumetricWheelAddon : MonoBehaviour
                                // };
                                // 
                                // _wheelCollider.suspensionSpring = suspensionSpring;
-                                break;
+                                //break;
 
                             }
                         }
@@ -255,7 +255,7 @@ public class VolumetricWheelAddon : MonoBehaviour
                         //// Apply the new suspensionSpring to the WheelCollider
                         //_wheelCollider.suspensionSpring = suspensionSpring;
                         contact = false;
-                       _wheelCollider.suspensionDistance = originalSuspension;
+                       //_wheelCollider.suspensionDistance = originalSuspension;
 
                         // JointSpring suspensionSpring = _wheelCollider.suspensionSpring;
                         //suspensionSpring.spring = Mathf.LerpUnclamped(_wheelCollider.suspensionSpring.spring , SuspensionStiffness, Time.deltaTime * 1f);
