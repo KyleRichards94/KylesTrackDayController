@@ -121,8 +121,6 @@ public class VolumetricWheelAddon : MonoBehaviour
                     if(!_wheelCollider.isGrounded){
                             currentSuspensionTarget = 0.5f;
                     }
-
-                
                 // Store all hit points as an array and apply the hit posision as the average position of all hits to smooth shit out.
                
                 for(int j = -RayArraySize; j <= RayArraySize; j++){
@@ -136,14 +134,10 @@ public class VolumetricWheelAddon : MonoBehaviour
                         if (Physics.Raycast(wheelModel.position + (wheelModel.right * wheelWidth * j/10f), rayDirection, out RaycastHit hit, _wheelCollider.radius + tireWallHeight)){
                             countHits++;
                             contact = true;
-
-
                             tireWallHeight = originalRadius/100f;
-
                             //Debug.Log(countHits);
                             if (!hit.transform.IsChildOf(carController.transform) && !hit.collider.isTrigger)
-                            {   
-                                
+                            {  
                                 JointSpring suspensionSpring = new JointSpring
                                {
                                    targetPosition = currentSuspensionTarget,
@@ -152,19 +146,16 @@ public class VolumetricWheelAddon : MonoBehaviour
                                };
                                // 
                                 _wheelCollider.suspensionSpring = suspensionSpring;
-
-                                
                                 float slip = CalculateFriction(rb.angularVelocity.x, sidewaysFriction);
-                                Debug.Log(slip);
-
-                                Debug.DrawLine(wheelModel.position + (wheelModel.right * wheelWidth * j/10f), hit.point, Color.red);
-
-                                float speed = rb.velocity.magnitude;
                                 
+                                Debug.Log(slip);
+                                Debug.DrawLine(wheelModel.position + (wheelModel.right * wheelWidth * j/10f), hit.point, Color.red);
+                                
+                                float speed = rb.velocity.magnitude;
+                
                                 lastLength = springLength;
                                 springLength = _wheelCollider.suspensionDistance - lastLength; //the length of the spring
                                 
-
                                 Debug.Log("hit distance" + hit.distance);
                                 Debug.Log("Spring length " + springLength);
 
@@ -172,7 +163,9 @@ public class VolumetricWheelAddon : MonoBehaviour
 
                                 springLength = Mathf.Clamp(springLength, minLength, maxLength);
                                 springVelocity = Mathf.Abs(lastLength - springLength) / Time.fixedDeltaTime;
+                                
                                 Debug.Log("Last Len" + lastLength);
+                                
                                 CurSuspensionLength =_wheelCollider.suspensionDistance - (springLength); // length of ray - wheel dist = final length of suspension
                                 float Spring_F = SuspensionStiffness * CurSuspensionLength; 
                                 float damperForce = damperStiffness * springVelocity;
@@ -187,18 +180,15 @@ public class VolumetricWheelAddon : MonoBehaviour
                                 }
 
                                 Vector3 wheelVelocityLS = transform.InverseTransformDirection(rb.GetPointVelocity(hit.point)); 
-
                                  fy = ((slip)  * ( SuspensionStiffness -  normalizedSuspensionForce))/(countHits);
-
+                                 
                                 springForce = SuspensionStiffness * (_wheelCollider.suspensionDistance  - springLength) * (tirePressure/originalRadius);
                                 suspensionForce = ((springForce + damperForce) *(hit.normal))/(( countHits));
 
                                 rb.AddForceAtPosition(  suspensionForce + ((slip)*-transform.right) + (fx * transform.forward)  , transform.position, ForceMode.Force);
 
-
                                 hitDistances[countHits] = CurSuspensionLength;
-
-                                // Check if we have reached the maximum number of hits to prevent overflow
+                                
                                 if (countHits>= maxHitCount)
                                     break;
 
@@ -237,7 +227,6 @@ public class VolumetricWheelAddon : MonoBehaviour
                         //// Apply the new suspensionSpring to the WheelCollider
                         _wheelCollider.suspensionSpring = suspensionSpring;
                         contact = false;
-                       
                 }
             }
         }
