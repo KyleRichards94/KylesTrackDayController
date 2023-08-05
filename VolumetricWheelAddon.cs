@@ -112,32 +112,18 @@ public class VolumetricWheelAddon : MonoBehaviour
         WheelFrictionCurve sidewaysFriction = _wheelCollider.sidewaysFriction;
         
         lastGroundedSuspensionLength = _wheelCollider.suspensionDistance;
-        //if(!_wheelCollider.isGrounded){
-        //        currentSuspensionTarget = 0f;
-//
-        //        JointSpring suspensionSpring = new JointSpring{
-        //            targetPosition = currentSuspensionTarget,
-        //            spring = 0,
-        //            damper =0,
-        //        };
-        //} else {
-        //        JointSpring suspensionSpring = new JointSpring{
-        //            targetPosition = currentSuspensionTarget,
-        //            spring = SuspensionStiffness,
-        //            damper = damperStiffness,
-        //        };
-//
-        //        // Apply the new suspensionSpring to the WheelCollider
-        //        _wheelCollider.suspensionSpring = suspensionSpring;
-        //}
-
+        
+        int maxHitCount = 2 * RayArraySize + 1;
+        float[] hitDistances = new float[maxHitCount];
 
             for (int i = 0; i <= raysNumber; i++)
             {
                     if(!_wheelCollider.isGrounded){
-                            currentSuspensionTarget = 0f;
+                            currentSuspensionTarget = 0.5f;
                     }
 
+                
+                // Store all hit points as an array and apply the hit posision as the average position of all hits to smooth shit out.
                
                 for(int j = -RayArraySize; j <= RayArraySize; j++){
                     Vector3 rayDirection = Quaternion.AngleAxis(_wheelCollider.steerAngle, transform.up) * Quaternion.AngleAxis(i * (raysMaxAngle / raysNumber) + ((180f - raysMaxAngle) / 2), transform.right) * transform.forward;
@@ -150,10 +136,22 @@ public class VolumetricWheelAddon : MonoBehaviour
                         if (Physics.Raycast(wheelModel.position + (wheelModel.right * wheelWidth * j/10f), rayDirection, out RaycastHit hit, _wheelCollider.radius + tireWallHeight)){
                             countHits++;
                             contact = true;
+
+
+                            tireWallHeight = originalRadius/100f;
+
                             //Debug.Log(countHits);
                             if (!hit.transform.IsChildOf(carController.transform) && !hit.collider.isTrigger)
                             {   
                                 
+                                JointSpring suspensionSpring = new JointSpring
+                               {
+                                   targetPosition = currentSuspensionTarget,
+                                   spring =0,
+                                   damper =0
+                               };
+                               // 
+                                _wheelCollider.suspensionSpring = suspensionSpring;
 
                                 
                                 float slip = CalculateFriction(rb.angularVelocity.x, sidewaysFriction);
@@ -183,7 +181,7 @@ public class VolumetricWheelAddon : MonoBehaviour
                                 float normalizedSuspensionForce  = normalizedSuspensionMag/rb.mass;
 
                                 if(isDriveWheel){
-                                    fx = carController.GetComponent<CarBehavior>().ActiveTorqueOut;
+                                    fx = carController.GetComponent<CarBehavior>().torqueOutput * 2f;
                                 } else {
                                     fx = 0;
                                 }
@@ -193,99 +191,68 @@ public class VolumetricWheelAddon : MonoBehaviour
                                  fy = ((slip)  * ( SuspensionStiffness -  normalizedSuspensionForce))/(countHits);
 
                                 springForce = SuspensionStiffness * (_wheelCollider.suspensionDistance  - springLength) * (tirePressure/originalRadius);
-                                suspensionForce = ((springForce + damperForce) *( (transform.up*(Vector3.Angle(rayDirection, -Vector3.up)/10f) +  hit.normal)/2f))/(( total.totalCount));
-
-                                //_wheelCollider.ResetSprungMasses();
-
-
-                                //_wheelCollider.transform.position = new Vector3(_wheelCollider.transform.position.x, _wheelCollider.transform.position.y - Mathf.Abs( CurSuspensionLength/3f), _wheelCollider.transform.position.z);
-                                
+                                suspensionForce = ((springForce + damperForce) *(hit.normal))/(( countHits));
 
                                 rb.AddForceAtPosition(  suspensionForce + ((slip)*-transform.right) + (fx * transform.forward)  , transform.position, ForceMode.Force);
 
-                               // Transforming the WHEEl position. Produces very smooth transformations but midigates suspension forces at the point of change. 
-                                Quaternion q;
-                                Vector3 pos;
-                               _wheelCollider.GetWorldPose(out pos, out q);
-                                //Quaternion Toe = Quaternion.Euler(0f, toeAngle , 0f);
-                                //Quaternion Camber = Quaternion.Euler(0f,0f,-camberAngle*10f);
-                                //WT.transform.localRotation = Camber * Toe * q;
-                             
-                                wheelModel.transform.position = new Vector3(pos.x,Mathf.Lerp( pos.y + Mathf.Abs(CurSuspensionLength),pos.y, Time.deltaTime *1f),pos.z);
-                                wheelModel.transform.rotation = q;
-                                
-                                //_wheelCollider.suspensionDistance = CurSuspensionLength;
-                                // Adjust suspension length. 
-                                //transform the suspension hub position. Usually sends the vehicle flying.
 
-                                // OLD IDEAS
-                                //_wheelCollider.suspensionDistance = Mathf.Lerp(_wheelCollider.suspensionDistance, _wheelCollider.suspensionDistance - (Mathf.Abs(Vector3.Angle(rayDirection, -Vector3.up)/100f)* hit.distance) , Time.deltaTime *0.6f);
-                                //Vector3 forceAtContact = (((rb.mass/2f)/(countHits*total.totalCount+1))) * (hit.normal) * ((_wheelCollider.suspensionDistance -  hit.distance)/countHits);
-                                                                //Grab the wheel friction curve from the wheel 
-                                // evaluate the forward and sideways friction from it. 
-                                // apply the forces to fy. 
-                                //_wheelCollider.transform.position = new Vector3(_wheelCollider.transform.position.x,Mathf.Lerp( _wheelCollider.transform.position.y , _wheelCollider.transform.position.y + ((hit.distance*Mathf.Abs(Vector3.Angle(rayDirection, -Vector3.up)))/550f), Time.deltaTime * 2f),_wheelCollider.transform.position.z);
-                               // currentSuspensionTarget = currentSuspensionTarget - (originalRadius - hitdist);
-                               // JointSpring suspensionSpring = new JointSpring
-                               // {
-                               //     targetPosition = currentSuspensionTarget,
-                               //     spring =0,
-                               //     damper =0
-                               // };
-                               // 
-                               // _wheelCollider.suspensionSpring = suspensionSpring;
-                                //break;
+                                hitDistances[countHits] = CurSuspensionLength;
+
+                                // Check if we have reached the maximum number of hits to prevent overflow
+                                if (countHits>= maxHitCount)
+                                    break;
 
                             }
+
+
+                           
                         }
+                        
+                        float averageHitDistance = 0f;
+                         if (countHits > 0)
+                            {
+                                for (int x = 0; x < countHits; x++)
+                                {
+                                    averageHitDistance += hitDistances[x];
+                                }
+                                averageHitDistance /= countHits;
+                            }
+                              Quaternion q;
+                              Vector3 pos;
+                             _wheelCollider.GetWorldPose(out pos, out q);
+                              //Quaternion Toe = Quaternion.Euler(0f, toeAngle , 0f);
+                              //Quaternion Camber = Quaternion.Euler(0f,0f,-camberAngle*10f);
+                              //WT.transform.localRotation = Camber * Toe * q;
+                              wheelModel.transform.position = new Vector3(pos.x, Mathf.Lerp( pos.y + Mathf.Abs(averageHitDistance),pos.y, Time.deltaTime),pos.z);
+                              wheelModel.transform.rotation = q;
                          
                     } else {
-                        
-                        //currentSuspensionTarget = Mathf.Lerp(currentSuspensionTarget, originalSuspensionTarget, Time.deltaTime * 1f);
-                        //if(!_wheelCollider.isGrounded){
-                        //    currentSuspensionTarget = 0f;
-                        //     //_wheelCollider.suspensionDistance =  _wheelCollider.suspensionDistance/2f;
-                        //}
-                        //JointSpring suspensionSpring = new JointSpring{
-                        //    targetPosition = currentSuspensionTarget,
-                        //    spring = SuspensionStiffness,
-                        //    damper = damperStiffness,
-                        //};
+                        tireWallHeight = _tireWallHeight;
+                        JointSpring suspensionSpring = new JointSpring{
+                            targetPosition = currentSuspensionTarget,
+                            spring = SuspensionStiffness,
+                            damper = damperStiffness,
+                        };
 //
                         //// Apply the new suspensionSpring to the WheelCollider
-                        //_wheelCollider.suspensionSpring = suspensionSpring;
+                        _wheelCollider.suspensionSpring = suspensionSpring;
                         contact = false;
-                       //_wheelCollider.suspensionDistance = originalSuspension;
-
-                        // JointSpring suspensionSpring = _wheelCollider.suspensionSpring;
-                        //suspensionSpring.spring = Mathf.LerpUnclamped(_wheelCollider.suspensionSpring.spring , SuspensionStiffness, Time.deltaTime * 1f);
-                        //suspensionSpring.damper = Mathf.LerpUnclamped(_wheelCollider.suspensionSpring.damper , damperStiffness, Time.deltaTime * 2f);
-                       // _wheelCollider.suspensionSpring = suspensionSpring;
-
-                        //_wheelCollider.transform.position = new Vector3(_wheelCollider.transform.position.x,Mathf.Lerp(_wheelCollider.transform.position.y,originalPosition.y, Time.deltaTime),_wheelCollider.transform.position.z);
-
-
-                        //_wheelCollider.transform.position = originalPosition;
-                        //Quaternion q;
-                        //Vector3 pos;
-                        ////Vector3 offSet = WC.GetComponent("VolumetricWheelAddon").currentPosition;
-                        ////Vector3 posWithOffset = WC.GetComponent("VolumetricWheelAddon").currentPosition
-                        //_wheelCollider.GetWorldPose(out pos, out q);
-                        ////Quaternion Toe = Quaternion.Euler(0f, toeAngle , 0f);
-                        ////Quaternion Camber = Quaternion.Euler(0f,0f,-camberAngle*10f);
-                        ////WT.transform.localRotation = Camber * Toe * q;
-                        //
-                        //wheelModel.transform.position = new Vector3(pos.x,pos.y,pos.z);
-                        //wheelModel.transform.rotation = q;
-                        //+(hitdist - originalRadius)
-                        
-                        //newWheelCollider.transform.position =  _wheelCollider.transform.position;
-                    }
+                       
                 }
             }
         }
+    }
 
         private void setWheelPose(){
+
+                 JointSpring suspensionSpring = new JointSpring{
+                    targetPosition = currentSuspensionTarget,
+                    spring = SuspensionStiffness,
+                    damper = damperStiffness,
+                };
+                //// Apply the new suspensionSpring to the WheelCollider
+                _wheelCollider.suspensionSpring = suspensionSpring;
+
                 Vector3 currentLPos = _wheelCollider.transform.localPosition;
                 _wheelCollider.transform.localPosition = new Vector3(originalPosition.x,originalPosition.y, originalPosition.z);
                 Quaternion q;
@@ -297,7 +264,7 @@ public class VolumetricWheelAddon : MonoBehaviour
                 //Quaternion Camber = Quaternion.Euler(0f,0f,-camberAngle*10f);
                 //WT.transform.localRotation = Camber * Toe * q;
                 wheelModel.transform.rotation = q;
-                wheelModel.transform.position = new Vector3(pos.x,Mathf.Lerp(wheelModel.position.y, pos.y, Time.deltaTime*5f),pos.z);
+                wheelModel.transform.position = new Vector3(pos.x,Mathf.Lerp(wheelModel.position.y, pos.y, Time.deltaTime*10),pos.z);
 
         }
 
